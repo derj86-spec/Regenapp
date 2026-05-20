@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RainPulse 2h</title>
+    <title>RainPulse</title>
     <style>
         :root {
             --bg-color: #121214;
@@ -31,7 +31,49 @@
             box-sizing: border-box;
             box-shadow: 0 10px 25px rgba(0,0,0,0.3);
         }
-        h1 { font-size: 1.5rem; margin-top: 0; text-align: center; color: var(--accent-blue); }
+        h1 { font-size: 1.5rem; margin-top: 0; text-align: center; color: var(--accent-blue); margin-bottom: 10px; }
+        
+        /* Slider Styling */
+        .slider-container {
+            margin: 15px 0 20px 0;
+            background: rgba(255,255,255,0.02);
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .slider-label span:last-child {
+            color: var(--accent-blue);
+            font-weight: bold;
+        }
+        .range-slider {
+            width: 100%;
+            -webkit-appearance: none;
+            background: rgba(255,255,255,0.1);
+            height: 6px;
+            border-radius: 5px;
+            outline: none;
+        }
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .range-slider::-webkit-slider-thumb:active {
+            transform: scale(1.2);
+        }
+
         .status-box {
             text-align: center;
             margin: 20px 0;
@@ -77,7 +119,16 @@
 <body>
 
 <div class="container">
-    <h1>🌧️ RainPulse</h1>
+    <h1 id="app-title">🌧️ RainPulse</h1>
+    
+    <div class="slider-container">
+        <div class="slider-label">
+            <span>Vorschau-Zeitraum:</span>
+            <span id="slider-value">2 Stunden</span>
+        </div>
+        <input type="range" id="time-slider" class="range-slider" min="1" max="6" value="2" oninput="changeHours(this.value)">
+    </div>
+
     <div id="status" class="status-box">Ortung wird gestartet...</div>
     
     <div id="details-container" class="details">
@@ -96,6 +147,18 @@
 let updateInterval = null;
 let countdownInterval = null;
 let letztesWetterData = null;
+let vorschauStunden = 2; // Standardmäßig 2 Stunden
+
+function changeHours(val) {
+    vorschauStunden = parseInt(val);
+    document.getElementById('slider-value').innerText = vorschauStunden === 1 ? "1 Stunde" : `${vorschauStunden} Stunden`;
+    document.getElementById('app-title').innerText = `🌧️ RainPulse (${vorschauStunden}h)`;
+    
+    // Wenn wir bereits Wetterdaten haben, berechnen wir die Anzeige sofort neu
+    if (letztesWetterData) {
+        analyzeHourlyRain();
+    }
+}
 
 function getWeather() {
     const statusDiv = document.getElementById('status');
@@ -157,93 +220,36 @@ function analyzeHourlyRain() {
     const aktuelleStunde = jetzt.getHours();
     const aktuelleMinute = jetzt.getMinutes();
     
-    // Wetter-Werte für die aktuelle Stunde und die nächste Stunde holen
-    const rainNow = data.hourly.precipitation[aktuelleStunde] || 0;
-    const rainNext = data.hourly.precipitation[aktuelleStunde + 1] || 0;
-    const rainInTwoHours = data.hourly.precipitation[aktuelleStunde + 2] || 0;
+    // Dynamisch alle Regenwerte für den gewählten Zeitraum sammeln
+    let regenWerte = [];
+    for (let i = 0; i <= vorschauStunden; i++) {
+        regenWerte.push(data.hourly.precipitation[aktuelleStunde + i] || 0);
+    }
     
-    const maxRain = Math.max(rainNow, rainNext);
+    const maxRain = Math.max(...regenWerte);
+    const formatUhrzeit = (dateObj) => dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + " Uhr";
 
-    // Helferfunktion zum sauberen Formatieren von Uhrzeiten (HH:MM Uhr)
-    const formatUhrzeit = (dateObj) => {
-        return dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + " Uhr";
-    };
-
-    // Dynamisches Zeitfenster berechnen: START ist JETZT, ENDE ist JETZT + 2 Stunden
     let startTimeStr = formatUhrzeit(jetzt);
-    let zweiStundenSpaeter = new Date(jetzt.getTime() + 2 * 60 * 60 * 1000);
-    let endTimeStr = formatUhrzeit(zweiStundenSpaeter);
+    let zukunftSpaeter = new Date(jetzt.getTime() + vorschauStunden * 60 * 60 * 1000);
+    let endTimeStr = formatUhrzeit(zukunftSpaeter);
     
     let durationStr = "";
 
+    // Prüfen, wann genau im gewählten Zeitfenster der Regen startet/ist
+    const rainNow = regenWerte[0] > 0;
+    
     if (maxRain === 0) {
-        // Fall 1: Komplett trocken
-        statusDiv.innerHTML = "☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Regen in Sicht.</span>";
+        statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Regen in den nächsten ${vorschauStunden}h.</span>`;
         document.getElementById('label-start').innerText = "Zeitfenster von:";
         document.getElementById('label-end').innerText = "Zeitfenster bis:";
         document.getElementById('label-duration').innerText = "Status:";
         durationStr = "Alles trocken";
-    } else if (rainNow > 0) {
-        // Fall 2: Es regnet aktuell bereits
+    } else if (rainNow) {
         statusDiv.innerHTML = "🌧️ Es regnet aktuell!";
         document.getElementById('label-start').innerText = "Zeitfenster von:";
         document.getElementById('label-duration').innerText = "Dauer im Fenster:";
         
-        if (rainNext > 0) {
-            document.getElementById('label-end').innerText = "Regnet bis mindestens:";
-            // Berechne verbleibende Minuten bis zum Ende der nächsten Stunde
-            const minVerbleibend = 120 - aktuelleMinute;
-            durationStr = `${minVerbleibend} Min. verbleibend`;
-        } else {
-            document.getElementById('label-end').innerText = "Hört auf um ca.:";
-            let endeUhrzeit = new Date();
-            endeUhrzeit.setHours(aktuelleStunde + 1, 0, 0, 0);
-            endTimeStr = formatUhrzeit(endeUhrzeit);
-            
-            const minVerbleibend = 60 - aktuelleMinute;
-            durationStr = `${minVerbleibend} Min. verbleibend`;
-        }
-    } else if (rainNext > 0) {
-        // Fall 3: Es ist jetzt trocken, fängt aber in der nächsten Stunde an
-        statusDiv.innerHTML = "⏳ Regen in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt bald an.</span>";
-        document.getElementById('label-start').innerText = "Startet um ca.:";
-        document.getElementById('label-end').innerText = "Zeitfenster bis:";
-        document.getElementById('label-duration').innerText = "Dauer im Fenster:";
+        // Finden, wann es aufhört (erster Wert mit 0)
+        let stopptNachStunden = regenWerte.findIndex(val => val === 0);
         
-        let startUhrzeit = new Date();
-        startUhrzeit.setHours(aktuelleStunde + 1, 0, 0, 0);
-        startTimeStr = formatUhrzeit(startUhrzeit);
-        
-        const minBisStart = 60 - aktuelleMinute;
-        durationStr = `In ${minBisStart} Min.`;
-    }
-
-    let intensityText = "Keiner";
-    if (maxRain > 0 && maxRain <= 0.5) intensityText = "Leicht";
-    if (maxRain > 0.5 && maxRain <= 2.0) intensityText = "Mäßig";
-    if (maxRain > 2.0) intensityText = "Stark";
-
-    // Werte ins UI schreiben
-    document.getElementById('start-time').innerText = startTimeStr;
-    document.getElementById('end-time').innerText = endTimeStr;
-    document.getElementById('duration').innerText = durationStr;
-    document.getElementById('intensity').innerText = `${maxRain.toFixed(1)} mm/h (${intensityText})`;
-}
-
-function startLiveCountdown() {
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = setInterval(() => {
-        if (letztesWetterData) {
-            analyzeHourlyRain();
-        }
-    }, 1000); 
-}
-
-getWeather();
-
-if (updateInterval) clearInterval(updateInterval);
-updateInterval = setInterval(getWeather, 300000);
-</script>
-
-</body>
-</html>
+        if (stopptNachStunden === -1 || stopptNachStunden >= vorschauStunden) {
