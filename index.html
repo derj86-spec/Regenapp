@@ -80,9 +80,8 @@
     <div id="status" class="status-box">Ortung wird gestartet...</div>
     
     <div id="details-container" class="details" style="display: none;">
-        <div class="detail-item"><span>Startet um:</span> <span id="start-time">-</span></div>
-        <div class="detail-item"><span>Endet um:</span> <span id="end-time">-</span></div>
-        <div class="detail-item"><span>Dauer:</span> <span id="duration">-</span></div>
+        <div class="detail-item"><span>Zeitraum:</span> <span id="time-window">-</span></div>
+        <div class="detail-item"><span>Niederschlag:</span> <span id="rain-amount">-</span></div>
         <div class="detail-item"><span>Intensität:</span> <span id="intensity">-</span></div>
     </div>
 
@@ -100,19 +99,18 @@ function getWeather() {
     detailsContainer.style.display = "none";
 
     if (!navigator.geolocation) {
-        statusDiv.innerHTML = "❌ GPS/Ortung wird nicht unterstützt.";
+        statusDiv.innerHTML = "❌ Ortung wird nicht unterstützt.";
         return;
     }
 
-    // Verbesserte Standortermittlung (erlaubt auch ungenauere Ortung wie WLAN/Funk)
     navigator.geolocation.getCurrentPosition(
         (position) => {
             const lat = position.coords.latitude.toFixed(4);
             const lon = position.coords.longitude.toFixed(4);
-            geoInfo.innerHTML = `📍 Position: ${lat}, ${lon}`;
+            geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
             
-            // Aufruf mit Fallback-Parametern für stabilere API-Antworten
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&minutely_15=precipitation,rain&timezone=auto`;
+            // Nutzt die stabilere Hourly-API
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&timezone=auto`;
             
             statusDiv.innerHTML = "📡 Lade Wetterdaten...";
 
@@ -122,7 +120,7 @@ function getWeather() {
                     return res.json();
                 })
                 .then(data => {
-                    analyzeRain(data);
+                    analyzeHourlyRain(data);
                 })
                 .catch(err => {
                     statusDiv.innerHTML = "❌ Fehler beim Laden der Wetterdaten.";
@@ -130,74 +128,56 @@ function getWeather() {
                 });
         },
         (error) => {
-            console.error(error);
             statusDiv.innerHTML = "❌ Ortung fehlgeschlagen.";
-            geoInfo.innerHTML = "Bitte Standortfreigabe im Browser prüfen.";
         },
-        { 
-            enableHighAccuracy: false, // Erlaubt explizit WLAN/Funk-Zellen-Ortung, falls kein GPS da ist
-            timeout: 15000,            // Gibt dem Browser 15 Sekunden Zeit zum Suchen
-            maximumAge: 60000          // Nutzt Positionsdaten, die bis zu 1 Minute alt sind (schont den Akku)
-        }
+        { enableHighAccuracy: false, timeout: 10000 }
     );
 }
 
-function analyzeRain(data) {
+function analyzeHourlyRain(data) {
     const statusDiv = document.getElementById('status');
     const detailsContainer = document.getElementById('details-container');
     
-    if (!data.minutely_15 || !data.minutely_15.time) {
-        statusDiv.innerHTML = "☀️ Aktuell keine Minutendaten verfügbar.";
+    if (!data.hourly || !data.hourly.precipitation) {
+        statusDiv.innerHTML = "❌ Keine Daten empfangen.";
         return;
     }
 
-    const times = data.minutely_15.time; 
-    const rain = data.minutely_15.precipitation || data.minutely_15.rain || [];
+    // Aktuelle Stunde finden
+    const jetzt = new Date();
+    const aktuelleStunde = jetzt.getHours();
+    
+    // Wir holen uns die Daten für die aktuelle Stunde und die nächste Stunde (+2h Fenster)
+    const rainNow = data.hourly.precipitation[aktuelleStunde] || 0;
+    const rainNext = data.hourly.precipitation[aktuelleStunde + 1] || 0;
+    
+    const maxRain = Math.max(rainNow, rainNext);
 
-    let rainStartIndex = -1;
-    let rainEndIndex = -1;
-    let maxIntensity = 0;
-    let isRainingNow = rain[0] > 0;
+    // Zeitfenster-Text bauen
+    const vonZeit = `${String(aktuelleStunde).padStart(2, '0')}:00`;
+    const bisZeit = `${String(aktuelleStunde + 2).padStart(2, '0')}:00`;
 
-    // Wir prüfen die nächsten 2 Stunden (8 Intervalle à 15 Minuten)
-    for (let i = 0; i < Math.min(8, rain.length); i++) {
-        if (rain[i] > 0) {
-            if (rainStartIndex === -1) rainStartIndex = i;
-            rainEndIndex = i;
-            if (rain[i] > maxIntensity) maxIntensity = rain[i];
-        }
-    }
-
-    if (rainStartIndex === -1) {
+    if (maxRain === 0) {
         statusDiv.innerHTML = "☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Regen in den nächsten 2 Stunden.</span>";
         return;
     }
 
-    const formatTime = (isoString) => {
-        const d = new Date(isoString);
-        return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-    };
-
-    const startTimeStr = formatTime(times[rainStartIndex]);
-    const endTimeStr = formatTime(new Date(new Date(times[rainEndIndex]).getTime() + 15 * 60000));
-    const durationMin = (rainEndIndex - rainStartIndex + 1) * 15;
-
-    let intensityText = "Leicht";
-    if (maxIntensity > 0.5) intensityText = "Mäßig";
-    if (maxIntensity > 2.0) intensityText = "Stark";
-
-    if (isRainingNow) {
+    // Status-Text bestimmen
+    if (rainNow > 0) {
         statusDiv.innerHTML = "🌧️ Es regnet aktuell!";
     } else {
-        const diffMs = new Date(times[rainStartIndex]) - new Date();
-        const diffMin = Math.max(0, Math.round(diffMs / 60000));
-        statusDiv.innerHTML = `⏳ Regen in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Beginnt in ca. ${diffMin} Minuten.</span>`;
+        statusDiv.innerHTML = "⏳ Regen in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt in der nächsten Stunde an.</span>";
     }
 
-    document.getElementById('start-time').innerText = startTimeStr;
-    document.getElementById('end-time').innerText = endTimeStr;
-    document.getElementById('duration').innerText = `${durationMin} Min.`;
-    document.getElementById('intensity').innerText = `${maxIntensity.toFixed(1)} mm/h (${intensityText})`;
+    // Intensität beschreiben
+    let intensityText = "Leicht";
+    if (maxRain > 0.5) intensityText = "Mäßig";
+    if (maxRain > 2.0) intensityText = "Stark";
+
+    // UI befüllen
+    document.getElementById('time-window').innerText = `${vonZeit} - ${bisZeit} Uhr`;
+    document.getElementById('rain-amount').innerText = `${maxRain.toFixed(1)} mm/h`;
+    document.getElementById('intensity').innerText = intensityText;
     
     detailsContainer.style.display = "block";
 }
