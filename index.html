@@ -31,8 +31,17 @@
             box-sizing: border-box;
             box-shadow: 0 10px 25px rgba(0,0,0,0.3);
         }
-        h1 { font-size: 1.5rem; margin-top: 0; text-align: center; color: var(--accent-blue); margin-bottom: 10px; }
+        h1 { font-size: 1.5rem; margin-top: 0; text-align: center; color: var(--accent-blue); margin-bottom: 2px; }
         
+        /* Kleine Zeitanzeige unter der Überschrift */
+        .time-window-sub {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-align: center;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
         .slider-container {
             margin: 15px 0 20px 0;
             background: rgba(255,255,255,0.02);
@@ -119,6 +128,7 @@
 
 <div class="container">
     <h1 id="app-title">🌧️ RainPulse (2h)</h1>
+    <div id="time-window-display" class="time-window-sub">Zeitfenster: --:-- - --:-- Uhr</div>
     
     <div class="slider-container">
         <div class="slider-label">
@@ -131,8 +141,6 @@
     <div id="status" class="status-box">Ortung wird gestartet...</div>
     
     <div id="details-container" class="details">
-        <div class="detail-item"><span id="label-start">Zeitfenster von:</span> <span id="start-time">-</span></div>
-        <div class="detail-item"><span id="label-end">Zeitfenster bis:</span> <span id="end-time">-</span></div>
         <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
         <div class="detail-item"><span>Intensität (Max):</span> <span id="intensity">-</span></div>
     </div>
@@ -191,7 +199,7 @@ function getWeather() {
 
                     const jetzt = new Date();
                     const zeitStr = jetzt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (Letzter Check: ${zeitStr})`;
+                    document.getElementById('update-info').innerText = `🔄 Live-Update active (Letzter Check: ${zeitStr})`;
                 })
                 .catch(err => {
                     statusDiv.innerHTML = "❌ Fehler beim Laden der Wetterdaten.";
@@ -233,53 +241,40 @@ function analyzeHourlyRain() {
     }
     
     const maxRain = Math.max(...regenWerte);
-    const formatUhrzeit = (dateObj) => dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + " Uhr";
-
-    let startTimeStr = formatUhrzeit(jetzt);
+    
+    // Zeitfenster berechnen (Start = Jetzt, Ende = Jetzt + Slider-Stunden)
+    const formatUhrzeitKompakt = (dateObj) => dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    let startTimeStr = formatUhrzeitKompakt(jetzt);
     let zukunftSpaeter = new Date(jetzt.getTime() + vorschauStunden * 60 * 60 * 1000);
-    let endTimeStr = formatUhrzeit(zukunftSpaeter);
+    let endTimeStr = formatUhrzeitKompakt(zukunftSpaeter);
+    
+    // Oben unter die Überschrift rendern
+    document.getElementById('time-window-display').innerText = `Zeitfenster: ${startTimeStr} - ${endTimeStr} Uhr`;
     
     let durationStr = "";
     const rainNow = regenWerte[0] > 0;
     
     if (maxRain === 0) {
         statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Regen in den nächsten ${vorschauStunden}h.</span>`;
-        document.getElementById('label-start').innerText = "Zeitfenster von:";
-        document.getElementById('label-end').innerText = "Zeitfenster bis:";
         document.getElementById('label-duration').innerText = "Status:";
         durationStr = "Alles trocken";
     } else if (rainNow) {
         statusDiv.innerHTML = "🌧️ Es regnet aktuell!";
-        document.getElementById('label-start').innerText = "Zeitfenster von:";
         document.getElementById('label-duration').innerText = "Dauer im Fenster:";
         
         let stopptNachStunden = regenWerte.findIndex(val => val === 0);
         
         if (stopptNachStunden === -1 || stopptNachStunden >= vorschauStunden) {
-            document.getElementById('label-end').innerText = "Regnet bis mindestens:";
-            const minVerbleibend = (vorschauStunden * 60) - aktuelleMinute;
             durationStr = "Regnet durchgehend";
         } else {
-            document.getElementById('label-end').innerText = "Hört auf um ca.:";
-            let endeUhrzeit = new Date();
-            endeUhrzeit.setHours(aktuelleStunde + stopptNachStunden, 0, 0, 0);
-            endTimeStr = formatUhrzeit(endeUhrzeit);
-            
             const minVerbleibend = (stopptNachStunden * 60) - aktuelleMinute;
             durationStr = `Noch ${formatMinutenSchoen(minVerbleibend)}`;
         }
     } else {
         statusDiv.innerHTML = "⏳ Regen in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt bald an.</span>";
-        document.getElementById('label-start').innerText = "Startet um ca.:";
-        document.getElementById('label-end').innerText = "Zeitfenster bis:";
         document.getElementById('label-duration').innerText = "Startet in:";
         
         let startetInStunden = regenWerte.findIndex(val => val > 0);
-        
-        let startUhrzeit = new Date();
-        startUhrzeit.setHours(aktuelleStunde + startetInStunden, 0, 0, 0);
-        startTimeStr = formatUhrzeit(startUhrzeit);
-        
         const minBisStart = (startetInStunden * 60) - aktuelleMinute;
         durationStr = formatMinutenSchoen(minBisStart);
     }
@@ -289,8 +284,6 @@ function analyzeHourlyRain() {
     if (maxRain > 0.5 && maxRain <= 2.0) intensityText = "Mäßig";
     if (maxRain > 2.0) intensityText = "Stark";
 
-    document.getElementById('start-time').innerText = startTimeStr;
-    document.getElementById('end-time').innerText = endTimeStr;
     document.getElementById('duration').innerText = durationStr;
     document.getElementById('intensity').innerText = `${maxRain.toFixed(1)} mm/h (${intensityText})`;
 }
