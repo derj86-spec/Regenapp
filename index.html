@@ -119,7 +119,7 @@
 <body>
 
 <div class="container">
-    <h1 id="app-title">🌧️ RainPulse</h1>
+    <h1 id="app-title">🌧️ RainPulse (2h)</h1>
     
     <div class="slider-container">
         <div class="slider-label">
@@ -147,14 +147,13 @@
 let updateInterval = null;
 let countdownInterval = null;
 let letztesWetterData = null;
-let vorschauStunden = 2; // Standardmäßig 2 Stunden
+let vorschauStunden = 2;
 
 function changeHours(val) {
     vorschauStunden = parseInt(val);
     document.getElementById('slider-value').innerText = vorschauStunden === 1 ? "1 Stunde" : `${vorschauStunden} Stunden`;
     document.getElementById('app-title').innerText = `🌧️ RainPulse (${vorschauStunden}h)`;
     
-    // Wenn wir bereits Wetterdaten haben, berechnen wir die Anzeige sofort neu
     if (letztesWetterData) {
         analyzeHourlyRain();
     }
@@ -177,7 +176,8 @@ function getWeather() {
             const lon = position.coords.longitude.toFixed(4);
             geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
             
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&timezone=auto&cb=${Date.now()}`;
+            // Forecast für 2 Tage holen, damit wir auch über Mitternacht hinaus Daten haben
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&forecast_days=2&timezone=auto&cb=${Date.now()}`;
             
             statusDiv.innerHTML = "📡 Lade Wetterdaten...";
 
@@ -220,7 +220,7 @@ function analyzeHourlyRain() {
     const aktuelleStunde = jetzt.getHours();
     const aktuelleMinute = jetzt.getMinutes();
     
-    // Dynamisch alle Regenwerte für den gewählten Zeitraum sammeln
+    // Regenwerte für die gewählten Stunden sammeln
     let regenWerte = [];
     for (let i = 0; i <= vorschauStunden; i++) {
         regenWerte.push(data.hourly.precipitation[aktuelleStunde + i] || 0);
@@ -234,8 +234,6 @@ function analyzeHourlyRain() {
     let endTimeStr = formatUhrzeit(zukunftSpaeter);
     
     let durationStr = "";
-
-    // Prüfen, wann genau im gewählten Zeitfenster der Regen startet/ist
     const rainNow = regenWerte[0] > 0;
     
     if (maxRain === 0) {
@@ -249,7 +247,65 @@ function analyzeHourlyRain() {
         document.getElementById('label-start').innerText = "Zeitfenster von:";
         document.getElementById('label-duration').innerText = "Dauer im Fenster:";
         
-        // Finden, wann es aufhört (erster Wert mit 0)
         let stopptNachStunden = regenWerte.findIndex(val => val === 0);
         
         if (stopptNachStunden === -1 || stopptNachStunden >= vorschauStunden) {
+            document.getElementById('label-end').innerText = "Regnet bis mindestens:";
+            const minVerbleibend = (vorschauStunden * 60) - aktuelleMinute;
+            durationStr = `${minVerbleibend} Min. verbleibend`;
+        } else {
+            document.getElementById('label-end').innerText = "Hört auf um ca.:";
+            let endeUhrzeit = new Date();
+            endeUhrzeit.setHours(aktuelleStunde + stopptNachStunden, 0, 0, 0);
+            endTimeStr = formatUhrzeit(endeUhrzeit);
+            
+            const minVerbleibend = (stopptNachStunden * 60) - aktuelleMinute;
+            durationStr = `${minVerbleibend} Min. verbleibend`;
+        }
+    } else {
+        statusDiv.innerHTML = "⏳ Regen in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt bald an.</span>";
+        document.getElementById('label-start').innerText = "Startet um ca.:";
+        document.getElementById('label-end').innerText = "Zeitfenster bis:";
+        document.getElementById('label-duration').innerText = "Dauer im Fenster:";
+        
+        let startetInStunden = regenWerte.findIndex(val => val > 0);
+        
+        let startUhrzeit = new Date();
+        startUhrzeit.setHours(aktuelleStunde + startetInStunden, 0, 0, 0);
+        startTimeStr = formatUhrzeit(startUhrzeit);
+        
+        const minBisStart = (startetInStunden * 60) - aktuelleMinute;
+        durationStr = `In ${minBisStart} Min.`;
+    }
+
+    let intensityText = "Keiner";
+    if (maxRain > 0 && maxRain <= 0.5) intensityText = "Leicht";
+    if (maxRain > 0.5 && maxRain <= 2.0) intensityText = "Mäßig";
+    if (maxRain > 2.0) intensityText = "Stark";
+
+    document.getElementById('start-time').innerText = startTimeStr;
+    document.getElementById('end-time').innerText = endTimeStr;
+    document.getElementById('duration').innerText = durationStr;
+    document.getElementById('intensity').innerText = `${maxRain.toFixed(1)} mm/h (${intensityText})`;
+}
+
+function startLiveCountdown() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+        if (letztesWetterData) {
+            analyzeHourlyRain();
+        }
+    }, 1000); 
+}
+
+// Jetzt starten wir die Funktionen erst, wenn das HTML komplett geladen ist!
+window.addEventListener('DOMContentLoaded', () => {
+    getWeather();
+    
+    if (updateInterval) clearInterval(updateInterval);
+    updateInterval = setInterval(getWeather, 300000);
+});
+</script>
+
+</body>
+</html>
