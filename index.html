@@ -87,7 +87,7 @@
     </div>
 
     <button class="btn" onclick="getWeather()">Jetzt aktualisieren</button>
-    <div id="geo-info" class="location-info">Suche GPS-Signal...</div>
+    <div id="geo-info" class="location-info">Suche Standort-Signal...</div>
 </div>
 
 <script>
@@ -100,24 +100,27 @@ function getWeather() {
     detailsContainer.style.display = "none";
 
     if (!navigator.geolocation) {
-        statusDiv.innerHTML = "❌ GPS wird von deinem Browser nicht unterstützt.";
+        statusDiv.innerHTML = "❌ GPS/Ortung wird nicht unterstützt.";
         return;
     }
 
-    // GPS-Standort abfragen
+    // Verbesserte Standortermittlung (erlaubt auch ungenauere Ortung wie WLAN/Funk)
     navigator.geolocation.getCurrentPosition(
         (position) => {
             const lat = position.coords.latitude.toFixed(4);
             const lon = position.coords.longitude.toFixed(4);
-            geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
+            geoInfo.innerHTML = `📍 Position: ${lat}, ${lon}`;
             
-            // Open-Meteo API mit minütlichen Daten aufrufen
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&minutely_15=&timezone=auto`;
+            // Aufruf mit Fallback-Parametern für stabilere API-Antworten
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&minutely_15=precipitation,rain&timezone=auto`;
             
             statusDiv.innerHTML = "📡 Lade Wetterdaten...";
 
             fetch(url)
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) throw new Error('API Fehler');
+                    return res.json();
+                })
                 .then(data => {
                     analyzeRain(data);
                 })
@@ -127,10 +130,15 @@ function getWeather() {
                 });
         },
         (error) => {
-            statusDiv.innerHTML = "❌ GPS-Zugriff verweigert oder fehlgeschlagen.";
-            geoInfo.innerHTML = "Bitte aktiviere GPS auf deinem Handy.";
+            console.error(error);
+            statusDiv.innerHTML = "❌ Ortung fehlgeschlagen.";
+            geoInfo.innerHTML = "Bitte Standortfreigabe im Browser prüfen.";
         },
-        { enableHighAccuracy: true, timeout: 10000 }
+        { 
+            enableHighAccuracy: false, // Erlaubt explizit WLAN/Funk-Zellen-Ortung, falls kein GPS da ist
+            timeout: 15000,            // Gibt dem Browser 15 Sekunden Zeit zum Suchen
+            maximumAge: 60000          // Nutzt Positionsdaten, die bis zu 1 Minute alt sind (schont den Akku)
+        }
     );
 }
 
@@ -138,17 +146,21 @@ function analyzeRain(data) {
     const statusDiv = document.getElementById('status');
     const detailsContainer = document.getElementById('details-container');
     
-    // Open-Meteo liefert 15-Minuten-Schritte für die nächsten Stunden
+    if (!data.minutely_15 || !data.minutely_15.time) {
+        statusDiv.innerHTML = "☀️ Aktuell keine Minutendaten verfügbar.";
+        return;
+    }
+
     const times = data.minutely_15.time; 
-    const rain = data.minutely_15.rain || data.minutely_15.precipitation; // Niederschlag in mm
+    const rain = data.minutely_15.precipitation || data.minutely_15.rain || [];
 
     let rainStartIndex = -1;
     let rainEndIndex = -1;
     let maxIntensity = 0;
     let isRainingNow = rain[0] > 0;
 
-    // Wir schauen uns die nächsten 8 Intervalle an (8 * 15 Min = 2 Stunden)
-    for (let i = 0; i < 8; i++) {
+    // Wir prüfen die nächsten 2 Stunden (8 Intervalle à 15 Minuten)
+    for (let i = 0; i < Math.min(8, rain.length); i++) {
         if (rain[i] > 0) {
             if (rainStartIndex === -1) rainStartIndex = i;
             rainEndIndex = i;
@@ -161,22 +173,19 @@ function analyzeRain(data) {
         return;
     }
 
-    // Zeiten formatieren
     const formatTime = (isoString) => {
         const d = new Date(isoString);
         return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     };
 
     const startTimeStr = formatTime(times[rainStartIndex]);
-    const endTimeStr = formatTime(new Date(new Date(times[rainEndIndex]).getTime() + 15 * 60000)); // +15 Minuten fürs Ende des Intervalls
+    const endTimeStr = formatTime(new Date(new Date(times[rainEndIndex]).getTime() + 15 * 60000));
     const durationMin = (rainEndIndex - rainStartIndex + 1) * 15;
 
-    // Intensität beschreiben
     let intensityText = "Leicht";
     if (maxIntensity > 0.5) intensityText = "Mäßig";
     if (maxIntensity > 2.0) intensityText = "Stark";
 
-    // Hauptstatus setzen
     if (isRainingNow) {
         statusDiv.innerHTML = "🌧️ Es regnet aktuell!";
     } else {
@@ -185,7 +194,6 @@ function analyzeRain(data) {
         statusDiv.innerHTML = `⏳ Regen in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Beginnt in ca. ${diffMin} Minuten.</span>`;
     }
 
-    // Details befüllen
     document.getElementById('start-time').innerText = startTimeStr;
     document.getElementById('end-time').innerText = endTimeStr;
     document.getElementById('duration').innerText = `${durationMin} Min.`;
@@ -194,7 +202,6 @@ function analyzeRain(data) {
     detailsContainer.style.display = "block";
 }
 
-// Direkt beim Start einmal ausführen
 getWeather();
 </script>
 
