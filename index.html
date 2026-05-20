@@ -33,7 +33,6 @@
         }
         h1 { font-size: 1.5rem; margin-top: 0; text-align: center; color: var(--accent-blue); margin-bottom: 10px; }
         
-        /* Slider Styling */
         .slider-container {
             margin: 15px 0 20px 0;
             background: rgba(255,255,255,0.02);
@@ -176,7 +175,6 @@ function getWeather() {
             const lon = position.coords.longitude.toFixed(4);
             geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
             
-            // Forecast für 2 Tage holen, damit wir auch über Mitternacht hinaus Daten haben
             const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&forecast_days=2&timezone=auto&cb=${Date.now()}`;
             
             statusDiv.innerHTML = "📡 Lade Wetterdaten...";
@@ -207,6 +205,15 @@ function getWeather() {
     );
 }
 
+function formatMinutenSchoen(gesamtMinuten) {
+    if (gesamtMinuten < 60) {
+        return `${gesamtMinuten} Min.`;
+    }
+    const stunden = Math.floor(gesamtMinuten / 60);
+    const minuten = gesamtMinuten % 60;
+    return minuten === 0 ? `${stunden} Std.` : `${stunden} Std. ${minuten} Min.`;
+}
+
 function analyzeHourlyRain() {
     const statusDiv = document.getElementById('status');
     const data = letztesWetterData;
@@ -220,7 +227,6 @@ function analyzeHourlyRain() {
     const aktuelleStunde = jetzt.getHours();
     const aktuelleMinute = jetzt.getMinutes();
     
-    // Regenwerte für die gewählten Stunden sammeln
     let regenWerte = [];
     for (let i = 0; i <= vorschauStunden; i++) {
         regenWerte.push(data.hourly.precipitation[aktuelleStunde + i] || 0);
@@ -252,7 +258,7 @@ function analyzeHourlyRain() {
         if (stopptNachStunden === -1 || stopptNachStunden >= vorschauStunden) {
             document.getElementById('label-end').innerText = "Regnet bis mindestens:";
             const minVerbleibend = (vorschauStunden * 60) - aktuelleMinute;
-            durationStr = `${minVerbleibend} Min. verbleibend`;
+            durationStr = "Regnet durchgehend";
         } else {
             document.getElementById('label-end').innerText = "Hört auf um ca.:";
             let endeUhrzeit = new Date();
@@ -260,13 +266,13 @@ function analyzeHourlyRain() {
             endTimeStr = formatUhrzeit(endeUhrzeit);
             
             const minVerbleibend = (stopptNachStunden * 60) - aktuelleMinute;
-            durationStr = `${minVerbleibend} Min. verbleibend`;
+            durationStr = `Noch ${formatMinutenSchoen(minVerbleibend)}`;
         }
     } else {
         statusDiv.innerHTML = "⏳ Regen in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt bald an.</span>";
         document.getElementById('label-start').innerText = "Startet um ca.:";
         document.getElementById('label-end').innerText = "Zeitfenster bis:";
-        document.getElementById('label-duration').innerText = "Dauer im Fenster:";
+        document.getElementById('label-duration').innerText = "Startet in:";
         
         let startetInStunden = regenWerte.findIndex(val => val > 0);
         
@@ -275,7 +281,7 @@ function analyzeHourlyRain() {
         startTimeStr = formatUhrzeit(startUhrzeit);
         
         const minBisStart = (startetInStunden * 60) - aktuelleMinute;
-        durationStr = `In ${minBisStart} Min.`;
+        durationStr = formatMinutenSchoen(minBisStart);
     }
 
     let intensityText = "Keiner";
@@ -298,7 +304,6 @@ function startLiveCountdown() {
     }, 1000); 
 }
 
-// Jetzt starten wir die Funktionen erst, wenn das HTML komplett geladen ist!
 window.addEventListener('DOMContentLoaded', () => {
     getWeather();
     
