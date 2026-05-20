@@ -95,7 +95,7 @@
 <script>
 let updateInterval = null;
 let countdownInterval = null;
-let letztesWetterData = null; // Speichert die API-Antwort für den Countdown-Timer
+let letztesWetterData = null;
 
 function getWeather() {
     const statusDiv = document.getElementById('status');
@@ -124,10 +124,8 @@ function getWeather() {
                     return res.json();
                 })
                 .then(data => {
-                    letztesWetterData = data; // Daten für den Countdown sichern
+                    letztesWetterData = data;
                     analyzeHourlyRain();
-                    
-                    // Starte den sekündlichen Live-Countdown (ohne GPS/API-Last)
                     startLiveCountdown();
 
                     const jetzt = new Date();
@@ -158,47 +156,66 @@ function analyzeHourlyRain() {
     const jetzt = new Date();
     const aktuelleStunde = jetzt.getHours();
     const aktuelleMinute = jetzt.getMinutes();
-    const aktuellerIndex = aktuelleStunde;
     
-    const rainNow = data.hourly.precipitation[aktuellerIndex] || 0;
-    const rainNext = data.hourly.precipitation[aktuellerIndex + 1] || 0;
+    // Wetter-Werte für die aktuelle Stunde und die nächste Stunde holen
+    const rainNow = data.hourly.precipitation[aktuelleStunde] || 0;
+    const rainNext = data.hourly.precipitation[aktuelleStunde + 1] || 0;
+    const rainInTwoHours = data.hourly.precipitation[aktuelleStunde + 2] || 0;
     
     const maxRain = Math.max(rainNow, rainNext);
-    const formatZweiStellig = (num) => String(num % 24).padStart(2, '0');
 
-    let startTimeStr = `${formatZweiStellig(aktuelleStunde)}:00 Uhr`;
-    let endTimeStr = `${formatZweiStellig(aktuelleStunde + 2)}:00 Uhr`;
+    // Helferfunktion zum sauberen Formatieren von Uhrzeiten (HH:MM Uhr)
+    const formatUhrzeit = (dateObj) => {
+        return dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + " Uhr";
+    };
+
+    // Dynamisches Zeitfenster berechnen: START ist JETZT, ENDE ist JETZT + 2 Stunden
+    let startTimeStr = formatUhrzeit(jetzt);
+    let zweiStundenSpaeter = new Date(jetzt.getTime() + 2 * 60 * 60 * 1000);
+    let endTimeStr = formatUhrzeit(zweiStundenSpaeter);
+    
     let durationStr = "";
 
     if (maxRain === 0) {
+        // Fall 1: Komplett trocken
         statusDiv.innerHTML = "☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Regen in Sicht.</span>";
         document.getElementById('label-start').innerText = "Zeitfenster von:";
         document.getElementById('label-end').innerText = "Zeitfenster bis:";
         document.getElementById('label-duration').innerText = "Status:";
         durationStr = "Alles trocken";
     } else if (rainNow > 0) {
+        // Fall 2: Es regnet aktuell bereits
         statusDiv.innerHTML = "🌧️ Es regnet aktuell!";
-        document.getElementById('label-start').innerText = "Regnet seit mindestens:";
+        document.getElementById('label-start').innerText = "Zeitfenster von:";
+        document.getElementById('label-duration').innerText = "Dauer im Fenster:";
         
         if (rainNext > 0) {
             document.getElementById('label-end').innerText = "Regnet bis mindestens:";
-            durationStr = `${120 - aktuelleMinute} Min. verbleibend`;
+            // Berechne verbleibende Minuten bis zum Ende der nächsten Stunde
+            const minVerbleibend = 120 - aktuelleMinute;
+            durationStr = `${minVerbleibend} Min. verbleibend`;
         } else {
             document.getElementById('label-end').innerText = "Hört auf um ca.:";
-            endTimeStr = `${formatZweiStellig(aktuelleStunde + 1)}:00 Uhr`;
-            durationStr = `${60 - aktuelleMinute} Min. verbleibend`;
+            let endeUhrzeit = new Date();
+            endeUhrzeit.setHours(aktuelleStunde + 1, 0, 0, 0);
+            endTimeStr = formatUhrzeit(endeUhrzeit);
+            
+            const minVerbleibend = 60 - aktuelleMinute;
+            durationStr = `${minVerbleibend} Min. verbleibend`;
         }
-        document.getElementById('label-duration').innerText = "Dauer im Fenster:";
     } else if (rainNext > 0) {
+        // Fall 3: Es ist jetzt trocken, fängt aber in der nächsten Stunde an
         statusDiv.innerHTML = "⏳ Regen in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt bald an.</span>";
         document.getElementById('label-start').innerText = "Startet um ca.:";
-        document.getElementById('label-end').innerText = "Endet vorerst:";
+        document.getElementById('label-end').innerText = "Zeitfenster bis:";
+        document.getElementById('label-duration').innerText = "Dauer im Fenster:";
         
-        startTimeStr = `${formatZweiStellig(aktuelleStunde + 1)}:00 Uhr`;
+        let startUhrzeit = new Date();
+        startUhrzeit.setHours(aktuelleStunde + 1, 0, 0, 0);
+        startTimeStr = formatUhrzeit(startUhrzeit);
         
         const minBisStart = 60 - aktuelleMinute;
         durationStr = `In ${minBisStart} Min.`;
-        document.getElementById('label-duration').innerText = "Dauer im Fenster:";
     }
 
     let intensityText = "Keiner";
@@ -206,13 +223,13 @@ function analyzeHourlyRain() {
     if (maxRain > 0.5 && maxRain <= 2.0) intensityText = "Mäßig";
     if (maxRain > 2.0) intensityText = "Stark";
 
+    // Werte ins UI schreiben
     document.getElementById('start-time').innerText = startTimeStr;
     document.getElementById('end-time').innerText = endTimeStr;
     document.getElementById('duration').innerText = durationStr;
     document.getElementById('intensity').innerText = `${maxRain.toFixed(1)} mm/h (${intensityText})`;
 }
 
-// Rechnet jede Sekunde rein intern die Minuten runter – ohne GPS aufzurufen!
 function startLiveCountdown() {
     if (countdownInterval) clearInterval(countdownInterval);
     countdownInterval = setInterval(() => {
@@ -222,10 +239,8 @@ function startLiveCountdown() {
     }, 1000); 
 }
 
-// Erster Start
 getWeather();
 
-// Echtes Wetter- & GPS-Update nur alle 5 Minuten (300.000 ms)
 if (updateInterval) clearInterval(updateInterval);
 updateInterval = setInterval(getWeather, 300000);
 </script>
