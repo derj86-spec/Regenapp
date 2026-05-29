@@ -120,6 +120,7 @@
         <div id="details-container" class="details">
             <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
             <div class="detail-item"><span>Intensität (Aktuell):</span> <span id="intensity">-</span></div>
+            <div class="detail-item"><span>Niederschlagsart:</span> <span id="rain-type">-</span></div>
             <div class="detail-item"><span>Datenquelle:</span> <span style="color: #4ade80;">DWD 5-Min Radar 🇩🇪</span></div>
         </div>
         
@@ -167,7 +168,6 @@ function getWeather() {
             const lon = position.coords.longitude.toFixed(4);
             geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
             
-            // JETZT NEU: Abfrage der Bright Sky Radar API für die nächsten 2 Stunden
             const url = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&tz=Europe/Berlin`;
             statusDiv.innerHTML = "📡 Lade DWD 5-Minuten-Taktung...";
 
@@ -193,26 +193,31 @@ function getWeather() {
 }
 
 function processBrightSkyData() {
-    if (!letztesWetterData || !letztesWetterData.radar) return;
+    if (!letztesWetterData || !letztesWetterData.radar || letztesWetterData.radar.length === 0) return;
 
-    const jetzt = new Date();
     const radarEntries = letztesWetterData.radar;
 
-    // Erstelle Zeitstempel-Liste der API
+    // Erstelle saubere Zeitstempel-Liste der API
     let apiPoints = [];
     for (let entry of radarEntries) {
         apiPoints.push({
             time: new Date(entry.timestamp),
-            precip: entry.precipitation || 0
+            precip: entry.precipitation || 0,
+            source: entry.source || "unknown"
         });
     }
 
+    // Sortieren nach Zeit, um Berechnungsfehler zu vermeiden
+    apiPoints.sort((a, b) => a.time - b.time);
+
     minutengenaueVorhersage = [];
     
-    // Bright Sky liefert ca. 24 Punkte (120 Minuten im 5-Minuten-Takt).
-    // Wir bauen daraus eine minutengenaue Timeline für die nächsten 90 Minuten ab JETZT.
+    // Wir starten die Minutenberechnung genau am ERSTEN verfügbaren Radarpunkt der API
+    // Damit umgehen wir das Problem, falls Daten der Vergangenheit geliefert werden.
+    const startZeit = new apiPoints[0].time;
+
     for (let m = 0; m <= 90; m++) {
-        let targetTime = new Date(jetzt.getTime() + m * 60000);
+        let targetTime = new Date(startZeit.getTime() + m * 60000);
         
         let pLeft = apiPoints[0];
         let pRight = apiPoints[apiPoints.length - 1];
@@ -226,7 +231,6 @@ function processBrightSkyData() {
         }
 
         let finalPrecip = pLeft.precip;
-        // Interpolation zwischen den extrem engen 5-Minuten-Schritten
         if (pRight.time.getTime() !== pLeft.time.getTime()) {
             let fraction = (targetTime.getTime() - pLeft.time.getTime()) / (pRight.time.getTime() - pLeft.time.getTime());
             finalPrecip = pLeft.precip + fraction * (pRight.precip - pLeft.precip);
@@ -245,12 +249,11 @@ function renderUI() {
     const statusDiv = document.getElementById('status');
     if (minutengenaueVorhersage.length === 0) return;
 
-    const jetzt = new Date();
     const formatUhrzeit = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatUhrzeit(minutengenaueVorhersage[0].time)} - ${formatUhrzeit(minutengenaueVorhersage[minutengenaueVorhersage.length - 1].time)} Uhr`;
 
-    const rainThreshold = 0.05; // Ab hier gilt es als spürbarer Regen
+    const rainThreshold = 0.05; 
     let aktuellRegen = minutengenaueVorhersage[0].precip > rainThreshold;
     
     let durationStr = "";
@@ -258,7 +261,7 @@ function renderUI() {
     if (!aktuellRegen) {
         let regenMinuteIndex = minutengenaueVorhersage.findIndex(p => p.precip > rainThreshold);
         if (regenMinuteIndex === -1) {
-            statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Radar-Signal im Umkreis detektiert.</span>`;
+            statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Radar-Signal detektiert.</span>`;
             document.getElementById('label-duration').innerText = "Status:";
             durationStr = "Alles trocken";
         } else {
@@ -268,7 +271,7 @@ function renderUI() {
         }
     } else {
         statusDiv.innerHTML = `<span style="color: #38bdf8;">🌧️ Es regnet aktuell!</span>`;
-        document.getElementById('label-duration').innerText = "Endet in:";
+        document.getElementById('label-duration').innerText = "Trocken in ca.:";
         
         let trockenMinuteIndex = minutengenaueVorhersage.findIndex(p => p.precip <= rainThreshold);
         if (trockenMinuteIndex === -1) {
@@ -284,8 +287,16 @@ function renderUI() {
     if (currentPrecip > 0.5 && currentPrecip <= 2.0) intensityText = "Mäßig";
     if (currentPrecip > 2.0) intensityText = "Stark";
 
+    // Ermittle Niederschlagsart dynamisch anhand der Intensität (da Bright Sky keinen reinen Wettercode mitsendet)
+    let typeText = "Kein Niederschlag";
+    if (currentPrecip > 0) {
+        typeText = currentPrecip > 2.0 ? "Starkregen 🌧️" : "Regen";
+        if (currentPrecip < 0.2) typeText = "Nieselregen";
+    }
+
     document.getElementById('duration').innerText = durationStr;
     document.getElementById('intensity').innerText = `${currentPrecip.toFixed(2)} mm/h (${intensityText})`;
+    document.getElementById('rain-type').innerText = typeText;
 
     if (document.getElementById('chart-view').style.display === 'block') { buildChart(); }
 }
@@ -296,7 +307,6 @@ function buildChart() {
     let labels = [];
     let daten = [];
     
-    // Da wir echte 5-Minuten Daten haben, plotten wir im Diagramm exakt alle 5 Minuten einen Punkt
     for (let i = 0; i < minutengenaueVorhersage.length; i += 5) {
         let p = minutengenaueVorhersage[i];
         labels.push(p.time.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
@@ -306,4 +316,61 @@ function buildChart() {
     if (myChart) { myChart.destroy(); }
     
     let gradient = ctx.createLinearGradient(0, 0, 0, 200);
-    gradient.addColorStop(0, 'rgba(56, 189, 248
+    gradient.addColorStop(0, 'rgba(56, 189, 248, 0.5)');
+    gradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+
+    myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Niederschlag',
+                data: daten,
+                backgroundColor: gradient,
+                borderColor: '#38bdf8',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3, 
+                pointRadius: 2, 
+                pointBackgroundColor: '#38bdf8'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#a0a0ab', font: { size: 9 }, maxTicksLimit: 6 }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { 
+                        color: '#a0a0ab', 
+                        font: { size: 10 },
+                        callback: function(value) { return value.toFixed(1) + ' mm/h'; }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function startLiveCountdown() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+        if (letztesWetterData) { renderUI(); }
+    }, 5000); 
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    getWeather();
+    if (updateInterval) clearInterval(updateInterval);
+    updateInterval = setInterval(getWeather, 300000); 
+});
+</script>
+
+</body>
+</html>
