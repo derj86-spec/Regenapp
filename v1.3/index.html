@@ -86,21 +86,20 @@
 </div>
 
 <script>
-let updateInterval = null;
 let countdownInterval = null;
 let radarData = null;
+let weatherData = null; // Neu: Speicher für die langfristige Wettervorhersage
 let vorschauStunden = 2;
 let myChart = null;
 let minutengenaueVorhersage = [];
 
-// Mapping für den Slider (1-6, dann 12, 24)
 const sliderMap = {1:1, 2:2, 3:3, 4:4, 5:5, 6:6, 7:12, 8:24};
 
 function handleSlider(val) {
     vorschauStunden = sliderMap[val];
     document.getElementById('slider-value').innerText = `${vorschauStunden} Stunden`;
     document.getElementById('app-title').innerText = `🌧️ Regen Check (${vorschauStunden}h)`;
-    if (radarData) { processBrightSkyData(); }
+    if (radarData && weatherData) { processHybridData(); }
 }
 
 function showChart(visible) {
@@ -117,15 +116,20 @@ function getWeather() {
         const lon = position.coords.longitude.toFixed(4);
         updateLocationName(lat, lon);
          
-        const url = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&tz=Europe/Berlin`;
-        statusDiv.innerHTML = "📡 Lade DWD 5-Minuten-Taktung...";
+        const radarUrl = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&tz=Europe/Berlin`;
+        const weatherUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}&tz=Europe/Berlin`;
+        statusDiv.innerHTML = "📡 Synchronisiere Wetterdaten...";
 
-        fetch(url).then(res => res.json()).then(data => {
-            radarData = data;
-            processBrightSkyData();
-            startLiveCountdown();
-            document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (${new Date().toLocaleTimeString('de-DE')})`;
-        }).catch(() => { statusDiv.innerHTML = "❌ Radar Fehler."; });
+        // Beide APIs parallel abfragen
+        Promise.all([fetch(radarUrl), fetch(weatherUrl)])
+            .then(([radarRes, weatherRes]) => Promise.all([radarRes.json(), weatherRes.json()]))
+            .then(([radarJson, weatherJson]) => {
+                radarData = radarJson;
+                weatherData = weatherJson;
+                processHybridData();
+                startLiveCountdown();
+                document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (${new Date().toLocaleTimeString('de-DE')})`;
+            }).catch(() => { statusDiv.innerHTML = "❌ Fehler beim Laden der Daten."; });
     }, () => { statusDiv.innerHTML = "❌ Ortung fehlgeschlagen."; });
 }
 
@@ -139,9 +143,11 @@ function updateLocationName(lat, lon) {
         }).catch(() => { document.getElementById('geo-info').innerHTML = `📍 GPS: ${lat}, ${lon}`; });
 }
 
-function processBrightSkyData() {
-    if (!radarData || !radarData.radar || radarData.radar.length === 0) return;
+function processHybridData() {
+    if (!radarData || !radarData.radar || !weatherData || !weatherData.weather) return;
+    
     const radarEntries = radarData.radar.map(e => ({time: new Date(e.timestamp), precip: e.precipitation || 0})).sort((a,b)=>a.time-b.time);
+    const weatherEntries = weatherData.weather.map(e => ({time: new Date(e.timestamp), precip: e.precipitation || 0})).sort((a,b)=>a.time-b.time);
      
     minutengenaueVorhersage = [];
     const startZeit = radarEntries[0].time;
@@ -149,17 +155,29 @@ function processBrightSkyData() {
 
     for (let m = 0; m <= totalMinutes; m++) {
         let targetTime = new Date(startZeit.getTime() + m * 60000);
-        let pLeft = radarEntries[0], pRight = radarEntries[radarEntries.length-1];
+        let finalPrecip = 0;
 
-        for (let i=0; i<radarEntries.length-1; i++) {
-            if (radarEntries[i].time <= targetTime && radarEntries[i+1].time >= targetTime) { pLeft = radarEntries[i]; pRight = radarEntries[i+1]; break; }
+        if (m <= 120) {
+            // STRATEGIE 1: Die ersten 2 Stunden nutzen die hochpräzise Radar-Interpolation (Deine 13 Minuten bleiben stabil!)
+            let pLeft = radarEntries[0], pRight = radarEntries[radarEntries.length-1];
+            for (let i=0; i<radarEntries.length-1; i++) {
+                if (radarEntries[i].time <= targetTime && radarEntries[i+1].time >= targetTime) { pLeft = radarEntries[i]; pRight = radarEntries[i+1]; break; }
+            }
+            if (pRight.time.getTime() !== pLeft.time.getTime()) {
+                let fraction = (targetTime.getTime() - pLeft.time.getTime()) / (pRight.time.getTime() - pLeft.time.getTime());
+                finalPrecip = pLeft.precip + fraction * (pRight.precip - pLeft.precip);
+            } else {
+                finalPrecip = pLeft.precip;
+            }
+        } else {
+            // STRATEGIE 2: Ab Minute 121 schalten wir nahtlos auf das stündliche Wettermodell um
+            let wLeft = weatherEntries[0];
+            for (let i=0; i<weatherEntries.length; i++) {
+                if (weatherEntries[i].time <= targetTime) { wLeft = weatherEntries[i]; }
+            }
+            finalPrecip = wLeft ? wLeft.precip : 0;
         }
 
-        let finalPrecip = pLeft.precip;
-        if (pRight.time.getTime() !== pLeft.time.getTime()) {
-            let fraction = (targetTime.getTime() - pLeft.time.getTime()) / (pRight.time.getTime() - pLeft.time.getTime());
-            finalPrecip = pLeft.precip + fraction * (pRight.precip - pLeft.precip);
-        }
         minutengenaueVorhersage.push({time: targetTime, precip: Math.max(0, finalPrecip)});
     }
     renderUI();
@@ -170,7 +188,6 @@ function renderUI() {
     const formatUhr = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatUhr(minutengenaueVorhersage[0].time)} - ${formatUhr(minutengenaueVorhersage[minutengenaueVorhersage.length-1].time)} Uhr`;
 
-    // Optimierter Schwellenwert für sensiblere Erkennung
     const rainThreshold = 0.01;
     let aktuellRegen = minutengenaueVorhersage[0].precip > rainThreshold;
     let durationStr = "";
@@ -205,9 +222,8 @@ function buildChart() {
     myChart = new Chart(ctx, { type: 'line', data: { labels, datasets: [{data: daten, backgroundColor: grad, borderColor: '#38bdf8', fill: true, tension: 0.4, pointRadius: 0}]}, options: { responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}, scales: { x: {ticks: {maxTicksLimit: 6, color: '#a0a0ab'}}, y: {beginAtZero: true, ticks: {color: '#a0a0ab'}}}}});
 }
 
-function startLiveCountdown() { if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(() => { if (radarData) processBrightSkyData(); }, 10000); }
+function startLiveCountdown() { if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(() => { if (radarData && weatherData) processHybridData(); }, 10000); }
 
-// Hier wurde der Intervall von 600000 (10 Min) auf 180000 (3 Min) verkürzt
 window.addEventListener('DOMContentLoaded', () => { getWeather(); setInterval(getWeather, 180000); });
 </script>
 </body>
