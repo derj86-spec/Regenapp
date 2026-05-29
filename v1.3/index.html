@@ -99,7 +99,7 @@ function handleSlider(val) {
     vorschauStunden = sliderMap[val];
     document.getElementById('slider-value').innerText = `${vorschauStunden} Stunden`;
     document.getElementById('app-title').innerText = `🌧️ Regen Check (${vorschauStunden}h)`;
-    if (radarData && weatherData) { processHybridData(); }
+    if (radarData) { processHybridData(); }
 }
 
 function showChart(visible) {
@@ -120,21 +120,31 @@ function getWeather() {
         const weatherUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}`;
         statusDiv.innerHTML = "📡 Synchronisiere Wetterdaten...";
 
-        Promise.all([
-            fetch(radarUrl).then(res => { if(!res.ok) throw new Error(); return res.json(); }),
-            fetch(weatherUrl).then(res => { if(!res.ok) throw new Error(); return res.json(); })
-        ])
-        .then(([radarJson, weatherJson]) => {
-            radarData = radarJson;
-            weatherData = weatherJson;
-            processHybridData();
-            startLiveCountdown();
-            document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (${new Date().toLocaleTimeString('de-DE')})`;
-        })
-        .catch((err) => { 
-            console.error(err);
-            statusDiv.innerHTML = "❌ Fehler beim Laden der Daten."; 
-        });
+        fetch(radarUrl)
+            .then(res => { if(!res.ok) throw new Error(); return res.json(); })
+            .then(radarJson => {
+                radarData = radarJson;
+                
+                return fetch(weatherUrl)
+                    .then(res => res.ok ? res.json() : null)
+                    .then(weatherJson => {
+                        weatherData = weatherJson;
+                        document.getElementById('update-info').style.color = '#4ade80';
+                        document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (${new Date().toLocaleTimeString('de-DE')})`;
+                    })
+                    .catch(() => {
+                        weatherData = null;
+                        document.getElementById('update-info').style.color = '#eab308';
+                        document.getElementById('update-info').innerText = `⚠️ Nur Radar-Modus aktiv (${new Date().toLocaleTimeString('de-DE')})`;
+                    });
+            })
+            .then(() => {
+                processHybridData();
+                startLiveCountdown();
+            })
+            .catch(() => { 
+                statusDiv.innerHTML = "❌ Fehler beim Laden der Radardaten."; 
+            });
     }, () => { statusDiv.innerHTML = "❌ Ortung fehlgeschlagen."; });
 }
 
@@ -149,10 +159,10 @@ function updateLocationName(lat, lon) {
 }
 
 function processHybridData() {
-    if (!radarData || !radarData.radar || !weatherData || !weatherData.weather) return;
+    if (!radarData || !radarData.radar) return;
     
     const radarEntries = radarData.radar.map(e => ({time: new Date(e.timestamp), precip: e.precipitation || 0})).sort((a,b)=>a.time-b.time);
-    const weatherEntries = weatherData.weather.map(e => ({time: new Date(e.timestamp), precip: e.precipitation || 0})).sort((a,b)=>a.time-b.time);
+    const weatherEntries = (weatherData && weatherData.weather) ? weatherData.weather.map(e => ({time: new Date(e.timestamp), precip: e.precipitation || 0})).sort((a,b)=>a.time-b.time) : [];
      
     minutengenaueVorhersage = [];
     const startZeit = radarEntries[0].time;
@@ -162,7 +172,8 @@ function processHybridData() {
         let targetTime = new Date(startZeit.getTime() + m * 60000);
         let finalPrecip = 0;
 
-        if (m <= 120) {
+        if (m <= 120 || weatherEntries.length === 0) {
+            // Minute 0 bis 120: Hochpräzise Radar-Interpolation
             let pLeft = radarEntries[0], pRight = radarEntries[radarEntries.length-1];
             for (let i=0; i<radarEntries.length-1; i++) {
                 if (radarEntries[i].time <= targetTime && radarEntries[i+1].time >= targetTime) { pLeft = radarEntries[i]; pRight = radarEntries[i+1]; break; }
@@ -174,11 +185,18 @@ function processHybridData() {
                 finalPrecip = pLeft.precip;
             }
         } else {
-            let wLeft = weatherEntries[0];
-            for (let i=0; i<weatherEntries.length; i++) {
-                if (weatherEntries[i].time <= targetTime) { wLeft = weatherEntries[i]; }
+            // Ab Minute 121: Finde den zeitlich am nächsten liegenden echten Wetter-Eintrag (Verhindert das Einfrieren)
+            let closestWeather = weatherEntries[0];
+            let minDiff = Math.abs(targetTime.getTime() - closestWeather.time.getTime());
+            
+            for (let i = 1; i < weatherEntries.length; i++) {
+                let diff = Math.abs(targetTime.getTime() - weatherEntries[i].time.getTime());
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestWeather = weatherEntries[i];
+                }
             }
-            finalPrecip = wLeft ? wLeft.precip : 0;
+            finalPrecip = closestWeather ? closestWeather.precip : 0;
         }
 
         minutengenaueVorhersage.push({time: targetTime, precip: Math.max(0, finalPrecip)});
@@ -187,6 +205,7 @@ function processHybridData() {
 }
 
 function renderUI() {
+    if (minutengenaueVorhersage.length === 0) return;
     const statusDiv = document.getElementById('status');
     const formatUhr = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatUhr(minutengenaueVorhersage[0].time)} - ${formatUhr(minutengenaueVorhersage[minutengenaueVorhersage.length-1].time)} Uhr`;
@@ -225,7 +244,7 @@ function buildChart() {
     myChart = new Chart(ctx, { type: 'line', data: { labels, datasets: [{data: daten, backgroundColor: grad, borderColor: '#38bdf8', fill: true, tension: 0.4, pointRadius: 0}]}, options: { responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}, scales: { x: {ticks: {maxTicksLimit: 6, color: '#a0a0ab'}}, y: {beginAtZero: true, ticks: {color: '#a0a0ab'}}}}});
 }
 
-function startLiveCountdown() { if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(() => { if (radarData && weatherData) processHybridData(); }, 10000); }
+function startLiveCountdown() { if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(() => { if (radarData) processHybridData(); }, 10000); }
 
 window.addEventListener('DOMContentLoaded', () => { getWeather(); setInterval(getWeather, 180000); });
 </script>
