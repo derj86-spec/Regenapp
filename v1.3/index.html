@@ -210,7 +210,7 @@ function renderUI() {
     const formatUhr = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatUhr(minutengenaueVorhersage[0].time)} - ${formatUhr(minutengenaueVorhersage[minutengenaueVorhersage.length-1].time)} Uhr`;
 
-    const rainThreshold = 0.01;
+    const rainThreshold = 0.001;
     let aktuellRegen = minutengenaueVorhersage[0].precip > rainThreshold;
     let durationStr = "";
 
