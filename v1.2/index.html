@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RegenCheck 5Min-Radar</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-color: #1a1a1e;
+            --text-color: #ffffff;
+            --text-secondary: #a0a0ab;
+            --accent-blue: #38bdf8;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 400px;
+            background: var(--card-color);
+            border-radius: 20px;
+            padding: 25px;
+            box-sizing: border-box;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        h1 { font-size: 1.4rem; margin-top: 0; text-align: center; color: var(--accent-blue); margin-bottom: 2px; }
+        
+        .time-window-sub {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-align: center;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .status-box {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.03);
+            font-size: 1.1rem;
+        }
+        .details {
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 15px;
+            margin-top: 15px;
+        }
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+        }
+        .detail-item span:first-child { color: var(--text-secondary); }
+        
+        .btn {
+            width: 100%;
+            background: var(--accent-blue);
+            color: #000;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        .btn:active { opacity: 0.8; }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-color);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .btn-secondary:active { background: rgba(255, 255, 255, 0.15); }
+
+        .location-info {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-align: center;
+            margin-top: 10px;
+            line-height: 1.4;
+        }
+
+        #chart-view {
+            display: none;
+            margin-top: 15px;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 200px;
+            background: rgba(255,255,255,0.02);
+            padding: 10px;
+            border-radius: 12px;
+            box-sizing: border-box;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 id="app-title">🌧️ RegenCheck 5Min-Radar</h1>
+    <div id="time-window-display" class="time-window-sub">Zeitfenster: --:-- - --:-- Uhr</div>
+
+    <div id="main-view">
+        <div id="status" class="status-box">Ortung wird gestartet...</div>
+        
+        <div id="details-container" class="details">
+            <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
+            <div class="detail-item"><span>Intensität (Aktuell):</span> <span id="intensity">-</span></div>
+            <div class="detail-item"><span>Datenquelle:</span> <span style="color: #4ade80;">DWD 5-Min Radar 🇩🇪</span></div>
+        </div>
+        
+        <button class="btn btn-secondary" id="toggle-chart-btn" onclick="showChart(true)">📈 5-Minuten-Kurve anzeigen</button>
+    </div>
+
+    <div id="chart-view">
+        <div class="chart-container">
+            <canvas id="rainChart"></canvas>
+        </div>
+        <button class="btn btn-secondary" onclick="showChart(false)">⬅️ Zurück zur Übersicht</button>
+    </div>
+
+    <button class="btn" onclick="getWeather()">Jetzt aktualisieren</button>
+    <div id="geo-info" class="location-info">Suche Standort-Signal...</div>
+    <div id="update-info" class="location-info" style="color: #4ade80; font-weight: 500;"></div>
+</div>
+
+<script>
+let updateInterval = null;
+let countdownInterval = null;
+let letztesWetterData = null;
+let myChart = null;
+let minutengenaueVorhersage = [];
+
+function showChart(visible) {
+    document.getElementById('main-view').style.display = visible ? 'none' : 'block';
+    document.getElementById('chart-view').style.display = visible ? 'block' : 'none';
+    if (visible && letztesWetterData) { buildChart(); }
+}
+
+function getWeather() {
+    const statusDiv = document.getElementById('status');
+    const geoInfo = document.getElementById('geo-info');
+    statusDiv.innerHTML = "🔄 Bestimme Standort...";
+
+    if (!navigator.geolocation) {
+        statusDiv.innerHTML = "❌ Ortung wird nicht unterstützt.";
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude.toFixed(4);
+            const lon = position.coords.longitude.toFixed(4);
+            geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
+            
+            // JETZT NEU: Abfrage der Bright Sky Radar API für die nächsten 2 Stunden
+            const url = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&tz=Europe/Berlin`;
+            statusDiv.innerHTML = "📡 Lade DWD 5-Minuten-Taktung...";
+
+            fetch(url)
+                .then(res => { if (!res.ok) throw new Error('API Fehler'); return res.json(); })
+                .then(data => {
+                    letztesWetterData = data;
+                    processBrightSkyData();
+                    startLiveCountdown();
+
+                    const jetzt = new Date();
+                    const zeitStr = jetzt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (Letzter Check: ${zeitStr})`;
+                })
+                .catch(err => {
+                    statusDiv.innerHTML = "❌ Fehler beim Laden der Radardaten.";
+                    console.error(err);
+                });
+        },
+        (error) => { statusDiv.innerHTML = "❌ Ortung fehlgeschlagen."; },
+        { enableHighAccuracy: false, timeout: 10000 }
+    );
+}
+
+function processBrightSkyData() {
+    if (!letztesWetterData || !letztesWetterData.radar) return;
+
+    const jetzt = new Date();
+    const radarEntries = letztesWetterData.radar;
+
+    // Erstelle Zeitstempel-Liste der API
+    let apiPoints = [];
+    for (let entry of radarEntries) {
+        apiPoints.push({
+            time: new Date(entry.timestamp),
+            precip: entry.precipitation || 0
+        });
+    }
+
+    minutengenaueVorhersage = [];
+    
+    // Bright Sky liefert ca. 24 Punkte (120 Minuten im 5-Minuten-Takt).
+    // Wir bauen daraus eine minutengenaue Timeline für die nächsten 90 Minuten ab JETZT.
+    for (let m = 0; m <= 90; m++) {
+        let targetTime = new Date(jetzt.getTime() + m * 60000);
+        
+        let pLeft = apiPoints[0];
+        let pRight = apiPoints[apiPoints.length - 1];
+
+        for (let i = 0; i < apiPoints.length - 1; i++) {
+            if (apiPoints[i].time <= targetTime && apiPoints[i+1].time >= targetTime) {
+                pLeft = apiPoints[i];
+                pRight = apiPoints[i+1];
+                break;
+            }
+        }
+
+        let finalPrecip = pLeft.precip;
+        // Interpolation zwischen den extrem engen 5-Minuten-Schritten
+        if (pRight.time.getTime() !== pLeft.time.getTime()) {
+            let fraction = (targetTime.getTime() - pLeft.time.getTime()) / (pRight.time.getTime() - pLeft.time.getTime());
+            finalPrecip = pLeft.precip + fraction * (pRight.precip - pLeft.precip);
+        }
+
+        minutengenaueVorhersage.push({
+            time: targetTime,
+            precip: Math.max(0, finalPrecip)
+        });
+    }
+
+    renderUI();
+}
+
+function renderUI() {
+    const statusDiv = document.getElementById('status');
+    if (minutengenaueVorhersage.length === 0) return;
+
+    const jetzt = new Date();
+    const formatUhrzeit = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    
+    document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatUhrzeit(minutengenaueVorhersage[0].time)} - ${formatUhrzeit(minutengenaueVorhersage[minutengenaueVorhersage.length - 1].time)} Uhr`;
+
+    const rainThreshold = 0.05; // Ab hier gilt es als spürbarer Regen
+    let aktuellRegen = minutengenaueVorhersage[0].precip > rainThreshold;
+    
+    let durationStr = "";
+
+    if (!aktuellRegen) {
+        let regenMinuteIndex = minutengenaueVorhersage.findIndex(p => p.precip > rainThreshold);
+        if (regenMinuteIndex === -1) {
+            statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Radar-Signal im Umkreis detektiert.</span>`;
+            document.getElementById('label-duration').innerText = "Status:";
+            durationStr = "Alles trocken";
+        } else {
+            statusDiv.innerHTML = `⏳ Regen zieht auf!`;
+            document.getElementById('label-duration').innerText = "Startet in ca.:";
+            durationStr = `${regenMinuteIndex} Min.`;
+        }
+    } else {
+        statusDiv.innerHTML = `<span style="color: #38bdf8;">🌧️ Es regnet aktuell!</span>`;
+        document.getElementById('label-duration').innerText = "Endet in:";
+        
+        let trockenMinuteIndex = minutengenaueVorhersage.findIndex(p => p.precip <= rainThreshold);
+        if (trockenMinuteIndex === -1) {
+            durationStr = "Regnet vorerst durch";
+        } else {
+            durationStr = `${trockenMinuteIndex} Min.`;
+        }
+    }
+
+    let intensityText = "Keiner";
+    let currentPrecip = minutengenaueVorhersage[0].precip;
+    if (currentPrecip > 0 && currentPrecip <= 0.5) intensityText = "Leicht";
+    if (currentPrecip > 0.5 && currentPrecip <= 2.0) intensityText = "Mäßig";
+    if (currentPrecip > 2.0) intensityText = "Stark";
+
+    document.getElementById('duration').innerText = durationStr;
+    document.getElementById('intensity').innerText = `${currentPrecip.toFixed(2)} mm/h (${intensityText})`;
+
+    if (document.getElementById('chart-view').style.display === 'block') { buildChart(); }
+}
+
+function buildChart() {
+    const ctx = document.getElementById('rainChart').getContext('2d');
+    
+    let labels = [];
+    let daten = [];
+    
+    // Da wir echte 5-Minuten Daten haben, plotten wir im Diagramm exakt alle 5 Minuten einen Punkt
+    for (let i = 0; i < minutengenaueVorhersage.length; i += 5) {
+        let p = minutengenaueVorhersage[i];
+        labels.push(p.time.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
+        daten.push(p.precip);
+    }
+    
+    if (myChart) { myChart.destroy(); }
+    
+    let gradient = ctx.createLinearGradient(0, 0, 0, 200);
+    gradient.addColorStop(0, 'rgba(56, 189, 248
