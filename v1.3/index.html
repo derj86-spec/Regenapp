@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Regen Check</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --bg-color: #121214;
@@ -12,13 +11,13 @@
             --text-color: #ffffff;
             --text-secondary: #a0a0ab;
             --accent-blue: #38bdf8;
-            --accent-orange: #f59e0b;
         }
         body { font-family: sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .container { width: 100%; max-width: 400px; background: var(--card-color); border-radius: 20px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
         h1 { font-size: 1.5rem; text-align: center; color: var(--accent-blue); }
         .status-box { text-align: center; margin: 20px 0; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); }
-        .btn { width: 100%; background: var(--accent-blue); border: none; padding: 12px; border-radius: 10px; font-weight: bold; cursor: pointer; }
+        .btn { width: 100%; background: var(--accent-blue); border: none; padding: 12px; border-radius: 10px; font-weight: bold; cursor: pointer; color: #000; }
+        .detail-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.95rem; }
         .location-info { font-size: 0.8rem; color: var(--text-secondary); text-align: center; margin-top: 10px; }
     </style>
 </head>
@@ -27,18 +26,13 @@
 <div class="container">
     <h1 id="app-title">🌧️ Regen Check</h1>
     <div id="status" class="status-box">Initialisierung...</div>
-    <div id="details-container">
-        <div class="detail-item"><span>Intensität:</span> <span id="intensity">-</span></div>
-    </div>
+    <div class="detail-item"><span>Intensität:</span> <span id="intensity">-</span></div>
     <button class="btn" onclick="getWeather()">Jetzt aktualisieren</button>
     <div id="geo-info" class="location-info">📍 Suche Standort...</div>
     <div id="update-info" class="location-info"></div>
 </div>
 
 <script>
-let radarData = null;
-let weatherData = null;
-
 function getWeather() {
     const statusDiv = document.getElementById('status');
     statusDiv.innerHTML = "🔄 Bestimme Standort...";
@@ -51,31 +45,40 @@ function getWeather() {
     navigator.geolocation.getCurrentPosition((position) => {
         const lat = position.coords.latitude.toFixed(4);
         const lon = position.coords.longitude.toFixed(4);
-        // Datum exakt wie von der API gefordert
         const heute = new Date().toISOString().split('T')[0];
         
         statusDiv.innerHTML = "📡 Lade Daten...";
 
-        // Wir rufen die API mit dem geforderten Datum-Parameter auf
         Promise.all([
             fetch(`https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&date=${heute}`).then(res => res.json()),
             fetch(`https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}&date=${heute}`).then(res => res.json())
         ])
         .then(([radarJson, weatherJson]) => {
-            radarData = radarJson;
-            weatherData = weatherJson;
-            statusDiv.innerHTML = "✅ Daten geladen!";
+            // 1. Daten verarbeiten (Den aktuellsten Radar-Eintrag nehmen)
+            const radar = radarJson.radar;
+            if (radar && radar.length > 0) {
+                const latest = radar[radar.length - 1];
+                document.getElementById('intensity').innerText = `${latest.precipitation || 0} mm/h`;
+                statusDiv.innerHTML = latest.precipitation > 0 ? "🌧️ Es regnet!" : "☀️ Trocken.";
+            } else {
+                statusDiv.innerHTML = "ℹ️ Keine Radardaten gefunden.";
+            }
+
+            // 2. Zeitstempel & Standort anzeigen
             document.getElementById('update-info').innerText = "Stand: " + new Date().toLocaleTimeString();
-            // Hier würde deine Logik für processHybridData() folgen
+            
+            fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`)
+                .then(res => res.json())
+                .then(data => {
+                    const addr = data.address;
+                    document.getElementById('geo-info').innerText = `📍 ${addr.city || addr.town || addr.village || 'Standort gefunden'}`;
+                });
         })
         .catch(err => {
-            // Hier wird dir jetzt der exakte Fehler angezeigt
-            console.error("API-Fehler:", err);
+            console.error("Fehler:", err);
             statusDiv.innerHTML = "⚠️ Fehler: " + err.message;
         });
-    }, (err) => {
-        statusDiv.innerHTML = "❌ Standort verweigert.";
-    });
+    }, () => { statusDiv.innerHTML = "❌ Standort verweigert."; });
 }
 
 window.onload = getWeather;
