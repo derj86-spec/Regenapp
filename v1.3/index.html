@@ -42,7 +42,7 @@
         .details { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 15px; }
         .detail-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.95rem; }
         .detail-item span:first-child { color: var(--text-secondary); }
-        
+         
         .btn { width: 100%; background: var(--accent-blue); color: #000; border: none; padding: 12px; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 15px; }
         .btn-secondary { background: rgba(255, 255, 255, 0.08); color: var(--text-color); border: 1px solid rgba(255, 255, 255, 0.1); }
 
@@ -56,7 +56,7 @@
 <div class="container">
     <h1 id="app-title">🌧️ Regen Check (2h)</h1>
     <div id="time-window-display" class="time-window-sub">Zeitfenster: --:-- - --:-- Uhr</div>
-    
+     
     <div class="slider-container">
         <div class="slider-label">
             <span>Vorschau-Zeitraum:</span>
@@ -116,7 +116,7 @@ function getWeather() {
         const lat = position.coords.latitude.toFixed(4);
         const lon = position.coords.longitude.toFixed(4);
         updateLocationName(lat, lon);
-        
+         
         const url = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&tz=Europe/Berlin`;
         statusDiv.innerHTML = "📡 Lade DWD 5-Minuten-Taktung...";
 
@@ -142,7 +142,7 @@ function updateLocationName(lat, lon) {
 function processBrightSkyData() {
     if (!radarData || !radarData.radar || radarData.radar.length === 0) return;
     const radarEntries = radarData.radar.map(e => ({time: new Date(e.timestamp), precip: e.precipitation || 0})).sort((a,b)=>a.time-b.time);
-    
+     
     minutengenaueVorhersage = [];
     const startZeit = radarEntries[0].time;
     const totalMinutes = vorschauStunden * 60;
@@ -170,7 +170,8 @@ function renderUI() {
     const formatUhr = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatUhr(minutengenaueVorhersage[0].time)} - ${formatUhr(minutengenaueVorhersage[minutengenaueVorhersage.length-1].time)} Uhr`;
 
-    const rainThreshold = 0.05;
+    // Optimierter Schwellenwert für sensiblere Erkennung
+    const rainThreshold = 0.01;
     let aktuellRegen = minutengenaueVorhersage[0].precip > rainThreshold;
     let durationStr = "";
 
@@ -188,7 +189,7 @@ function renderUI() {
     let cp = minutengenaueVorhersage[0].precip;
     document.getElementById('duration').innerText = durationStr;
     document.getElementById('intensity').innerText = `${cp.toFixed(2)} mm/h`;
-    document.getElementById('rain-type').innerText = cp > 2 ? "Starkregen 🌧️" : (cp > 0.1 ? "Regen" : "Trocken");
+    document.getElementById('rain-type').innerText = cp > 2 ? "Starkregen 🌧️" : (cp > 0.01 ? "Regen" : "Trocken");
     if (document.getElementById('chart-view').style.display === 'block') buildChart();
 }
 
@@ -205,7 +206,9 @@ function buildChart() {
 }
 
 function startLiveCountdown() { if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(() => { if (radarData) processBrightSkyData(); }, 10000); }
-window.addEventListener('DOMContentLoaded', () => { getWeather(); setInterval(getWeather, 600000); });
+
+// Hier wurde der Intervall von 600000 (10 Min) auf 180000 (3 Min) verkürzt
+window.addEventListener('DOMContentLoaded', () => { getWeather(); setInterval(getWeather, 180000); });
 </script>
 </body>
 </html>
