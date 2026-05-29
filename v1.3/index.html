@@ -12,6 +12,7 @@
             --text-color: #ffffff;
             --text-secondary: #a0a0ab;
             --accent-blue: #38bdf8;
+            --accent-orange: #f59e0b;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -56,7 +57,7 @@
 <div class="container">
     <h1 id="app-title">🌧️ Regen Check (2h)</h1>
     <div id="time-window-display" class="time-window-sub">Zeitfenster: --:-- - --:-- Uhr</div>
-     
+    
     <div class="slider-container">
         <div class="slider-label">
             <span>Vorschau-Zeitraum:</span>
@@ -115,7 +116,7 @@ function getWeather() {
         const lat = position.coords.latitude.toFixed(4);
         const lon = position.coords.longitude.toFixed(4);
         updateLocationName(lat, lon);
-         
+        
         const radarUrl = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}`;
         const weatherUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}`;
         statusDiv.innerHTML = "📡 Synchronisiere Wetterdaten...";
@@ -124,27 +125,24 @@ function getWeather() {
             .then(res => { if(!res.ok) throw new Error(); return res.json(); })
             .then(radarJson => {
                 radarData = radarJson;
-                
                 return fetch(weatherUrl)
                     .then(res => res.ok ? res.json() : null)
                     .then(weatherJson => {
                         weatherData = weatherJson;
                         document.getElementById('update-info').style.color = '#4ade80';
-                        document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (${new Date().toLocaleTimeString('de-DE')})`;
+                        document.getElementById('update-info').innerText = `🔄 Live-Update (${new Date().toLocaleTimeString('de-DE')})`;
                     })
                     .catch(() => {
                         weatherData = null;
                         document.getElementById('update-info').style.color = '#eab308';
-                        document.getElementById('update-info').innerText = `⚠️ Nur Radar-Modus aktiv (${new Date().toLocaleTimeString('de-DE')})`;
+                        document.getElementById('update-info').innerText = `⚠️ Nur Radar-Modus (${new Date().toLocaleTimeString('de-DE')})`;
                     });
             })
             .then(() => {
                 processHybridData();
                 startLiveCountdown();
             })
-            .catch(() => { 
-                statusDiv.innerHTML = "❌ Fehler beim Laden der Radardaten."; 
-            });
+            .catch(() => { statusDiv.innerHTML = "❌ Fehler beim Laden."; });
     }, () => { statusDiv.innerHTML = "❌ Ortung fehlgeschlagen."; });
 }
 
@@ -153,14 +151,12 @@ function updateLocationName(lat, lon) {
         .then(res => res.json()).then(data => {
             const addr = data.address;
             const stadt = addr.city || addr.town || addr.village || "";
-            const stadtteil = addr.suburb || addr.neighbourhood || "";
-            document.getElementById('geo-info').innerHTML = stadt && stadtteil ? `📍 ${stadt} (${stadtteil})` : `📍 ${stadt || 'GPS: '+lat+', '+lon}`;
+            document.getElementById('geo-info').innerHTML = `📍 ${stadt || 'GPS: '+lat+', '+lon}`;
         }).catch(() => { document.getElementById('geo-info').innerHTML = `📍 GPS: ${lat}, ${lon}`; });
 }
 
 function processHybridData() {
     if (!radarData || !radarData.radar) return;
-    
     const radarEntries = radarData.radar.map(e => ({time: new Date(e.timestamp), precip: e.precipitation || 0})).sort((a,b)=>a.time-b.time);
     const weatherEntries = (weatherData && weatherData.weather) ? weatherData.weather.map(e => ({time: new Date(e.timestamp), precip: e.precipitation || 0})).sort((a,b)=>a.time-b.time) : [];
      
@@ -171,9 +167,7 @@ function processHybridData() {
     for (let m = 0; m <= totalMinutes; m++) {
         let targetTime = new Date(startZeit.getTime() + m * 60000);
         let finalPrecip = 0;
-
         if (m <= 120 || weatherEntries.length === 0) {
-            // Minute 0 bis 120: Hochpräzise Radar-Interpolation
             let pLeft = radarEntries[0], pRight = radarEntries[radarEntries.length-1];
             for (let i=0; i<radarEntries.length-1; i++) {
                 if (radarEntries[i].time <= targetTime && radarEntries[i+1].time >= targetTime) { pLeft = radarEntries[i]; pRight = radarEntries[i+1]; break; }
@@ -181,24 +175,11 @@ function processHybridData() {
             if (pRight.time.getTime() !== pLeft.time.getTime()) {
                 let fraction = (targetTime.getTime() - pLeft.time.getTime()) / (pRight.time.getTime() - pLeft.time.getTime());
                 finalPrecip = pLeft.precip + fraction * (pRight.precip - pLeft.precip);
-            } else {
-                finalPrecip = pLeft.precip;
-            }
+            } else { finalPrecip = pLeft.precip; }
         } else {
-            // Ab Minute 121: Finde den zeitlich am nächsten liegenden echten Wetter-Eintrag (Verhindert das Einfrieren)
-            let closestWeather = weatherEntries[0];
-            let minDiff = Math.abs(targetTime.getTime() - closestWeather.time.getTime());
-            
-            for (let i = 1; i < weatherEntries.length; i++) {
-                let diff = Math.abs(targetTime.getTime() - weatherEntries[i].time.getTime());
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    closestWeather = weatherEntries[i];
-                }
-            }
-            finalPrecip = closestWeather ? closestWeather.precip : 0;
+            let closest = weatherEntries.reduce((prev, curr) => Math.abs(curr.time - targetTime) < Math.abs(prev.time - targetTime) ? curr : prev);
+            finalPrecip = closest ? closest.precip : 0;
         }
-
         minutengenaueVorhersage.push({time: targetTime, precip: Math.max(0, finalPrecip)});
     }
     renderUI();
@@ -211,30 +192,48 @@ function renderUI() {
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatUhr(minutengenaueVorhersage[0].time)} - ${formatUhr(minutengenaueVorhersage[minutengenaueVorhersage.length-1].time)} Uhr`;
 
     const rainThreshold = 0.001;
-    let aktuellRegen = minutengenaueVorhersage[0].precip > rainThreshold;
+    let aktuellRegenRadar = minutengenaueVorhersage[0].precip > rainThreshold;
+    
+    // Prüfe auf Gewitter (WMO Codes 95, 96, 99) in der Wetter-API
+    let hatGewitter = weatherData && weatherData.weather && 
+        weatherData.weather.slice(0, 2).some(e => [95, 96, 99].includes(e.weather_code));
+    
+    let hatNiederschlagVorhersage = weatherData && weatherData.weather && 
+        weatherData.weather.slice(0, 2).some(e => e.precipitation > 0);
+
     let durationStr = "";
 
-    if (!aktuellRegen) {
-        let idx = minutengenaueVorhersage.findIndex(p => p.precip > rainThreshold);
-        if (idx === -1) { statusDiv.innerHTML = `☀️ Trocken!<br><small>Kein Regen in ${vorschauStunden}h.</small>`; durationStr = "Alles trocken"; }
-        else { statusDiv.innerHTML = `⏳ Regen zieht auf!`; durationStr = `${idx} Min.`; document.getElementById('label-duration').innerText = "Startet in ca.:"; }
-    } else {
-        statusDiv.innerHTML = `<span style="color: #38bdf8;">🌧️ Es regnet aktuell!</span>`;
+    if (hatGewitter) {
+        statusDiv.innerHTML = `<span style="color: var(--accent-orange);">⚡ Gewittergefahr!</span>`;
+        durationStr = "Gewitter aktiv";
+        document.getElementById('label-duration').innerText = "Status:";
+    } else if (aktuellRegenRadar || hatNiederschlagVorhersage) {
+        statusDiv.innerHTML = `<span style="color: var(--accent-blue);">🌧️ Es regnet aktuell!</span>`;
         let idx = minutengenaueVorhersage.findIndex(p => p.precip <= rainThreshold);
         durationStr = idx === -1 ? "Regnet vorerst durch" : `${idx} Min.`;
         document.getElementById('label-duration').innerText = "Trocken in ca.:";
+    } else {
+        let idx = minutengenaueVorhersage.findIndex(p => p.precip > rainThreshold);
+        if (idx === -1) { 
+            statusDiv.innerHTML = `☀️ Trocken!`; 
+            durationStr = "Alles trocken"; 
+        } else { 
+            statusDiv.innerHTML = `⏳ Niederschlag zieht auf!`; 
+            durationStr = `${idx} Min.`; 
+            document.getElementById('label-duration').innerText = "Startet in ca.:"; 
+        }
     }
 
-    let cp = minutengenaueVorhersage[0].precip;
     document.getElementById('duration').innerText = durationStr;
-    document.getElementById('intensity').innerText = `${cp.toFixed(2)} mm/h`;
-    document.getElementById('rain-type').innerText = cp > 2 ? "Starkregen 🌧️" : (cp > 0.01 ? "Regen" : "Trocken");
+    document.getElementById('intensity').innerText = `${minutengenaueVorhersage[0].precip.toFixed(2)} mm/h`;
+    document.getElementById('rain-type').innerText = hatGewitter ? "Gewittergefahr ⚡" : (minutengenaueVorhersage[0].precip > 0.01 ? "Regen" : "Trocken");
+    
     if (document.getElementById('chart-view').style.display === 'block') buildChart();
 }
 
 function buildChart() {
     const ctx = document.getElementById('rainChart').getContext('2d');
-    let labels = [], daten = [], step = vorschauStunden <= 2 ? 5 : (vorschauStunden <= 6 ? 15 : 60);
+    let labels = [], daten = [], step = vorschauStunden <= 2 ? 5 : 15;
     for (let i=0; i<minutengenaueVorhersage.length; i+=step) {
         labels.push(minutengenaueVorhersage[i].time.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}));
         daten.push(minutengenaueVorhersage[i].precip);
@@ -245,7 +244,6 @@ function buildChart() {
 }
 
 function startLiveCountdown() { if (countdownInterval) clearInterval(countdownInterval); countdownInterval = setInterval(() => { if (radarData) processHybridData(); }, 10000); }
-
 window.addEventListener('DOMContentLoaded', () => { getWeather(); setInterval(getWeather, 180000); });
 </script>
 </body>
