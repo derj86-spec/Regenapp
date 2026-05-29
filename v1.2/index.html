@@ -193,28 +193,25 @@ function getWeather() {
 }
 
 function processBrightSkyData() {
-    if (!letztesWetterData || !letztesWetterData.radar || letztesWetterData.radar.length === 0) return;
+    if (!letztesWetterData || !letztesWetterData.radar || letztesWetterData.radar.length === 0) {
+        document.getElementById('status').innerHTML = "❌ Keine Radardaten für diesen Ort verfügbar.";
+        return;
+    }
 
     const radarEntries = letztesWetterData.radar;
-
-    // Erstelle saubere Zeitstempel-Liste der API
     let apiPoints = [];
     for (let entry of radarEntries) {
         apiPoints.push({
             time: new Date(entry.timestamp),
-            precip: entry.precipitation || 0,
-            source: entry.source || "unknown"
+            precip: entry.precipitation || 0
         });
     }
 
-    // Sortieren nach Zeit, um Berechnungsfehler zu vermeiden
     apiPoints.sort((a, b) => a.time - b.time);
-
     minutengenaueVorhersage = [];
     
-    // Wir starten die Minutenberechnung genau am ERSTEN verfügbaren Radarpunkt der API
-    // Damit umgehen wir das Problem, falls Daten der Vergangenheit geliefert werden.
-    const startZeit = new apiPoints[0].time;
+    // HIER KORRIGIERT: Das störende "new" wurde entfernt
+    const startZeit = apiPoints[0].time;
 
     for (let m = 0; m <= 90; m++) {
         let targetTime = new Date(startZeit.getTime() + m * 60000);
@@ -255,7 +252,6 @@ function renderUI() {
 
     const rainThreshold = 0.05; 
     let aktuellRegen = minutengenaueVorhersage[0].precip > rainThreshold;
-    
     let durationStr = "";
 
     if (!aktuellRegen) {
@@ -287,7 +283,6 @@ function renderUI() {
     if (currentPrecip > 0.5 && currentPrecip <= 2.0) intensityText = "Mäßig";
     if (currentPrecip > 2.0) intensityText = "Stark";
 
-    // Ermittle Niederschlagsart dynamisch anhand der Intensität (da Bright Sky keinen reinen Wettercode mitsendet)
     let typeText = "Kein Niederschlag";
     if (currentPrecip > 0) {
         typeText = currentPrecip > 2.0 ? "Starkregen 🌧️" : "Regen";
