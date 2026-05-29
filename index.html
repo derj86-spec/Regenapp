@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RainPulse</title>
+    <title>RegenCheck</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --bg-color: #121214;
@@ -33,7 +34,6 @@
         }
         h1 { font-size: 1.5rem; margin-top: 0; text-align: center; color: var(--accent-blue); margin-bottom: 2px; }
         
-        /* Kleine Zeitanzeige unter der Überschrift */
         .time-window-sub {
             font-size: 0.85rem;
             color: var(--text-secondary);
@@ -102,6 +102,7 @@
             font-size: 0.95rem;
         }
         .detail-item span:first-child { color: var(--text-secondary); }
+        
         .btn {
             width: 100%;
             background: var(--accent-blue);
@@ -115,6 +116,15 @@
             margin-top: 15px;
         }
         .btn:active { opacity: 0.8; }
+        
+        /* Sekundärer Button für die Chart-Ansicht */
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-color);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .btn-secondary:active { background: rgba(255, 255, 255, 0.15); }
+
         .location-info {
             font-size: 0.75rem;
             color: var(--text-secondary);
@@ -122,12 +132,28 @@
             margin-top: 10px;
             line-height: 1.4;
         }
+
+        /* Container für das Diagramm (wird standardmäßig versteckt) */
+        #chart-view {
+            display: none;
+            margin-top: 15px;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 200px;
+            background: rgba(255,255,255,0.02);
+            padding: 10px;
+            border-radius: 12px;
+            box-sizing: border-box;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1 id="app-title">🌧️ RainPulse (2h)</h1>
+    <h1 id="app-title">🌧️ RegenCheck (2h)</h1>
     <div id="time-window-display" class="time-window-sub">Zeitfenster: --:-- - --:-- Uhr</div>
     
     <div class="slider-container">
@@ -138,11 +164,23 @@
         <input type="range" id="time-slider" class="range-slider" min="1" max="6" value="2" oninput="changeHours(this.value)">
     </div>
 
-    <div id="status" class="status-box">Ortung wird gestartet...</div>
-    
-    <div id="details-container" class="details">
-        <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
-        <div class="detail-item"><span>Intensität (Max):</span> <span id="intensity">-</span></div>
+    <div id="main-view">
+        <div id="status" class="status-box">Ortung wird gestartet...</div>
+        
+        <div id="details-container" class="details">
+            <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
+            <div class="detail-item"><span>Intensität (Max):</span> <span id="intensity">-</span></div>
+            <div class="detail-item"><span>Niederschlagsart:</span> <span id="rain-type">-</span></div>
+        </div>
+        
+        <button class="btn btn-secondary" id="toggle-chart-btn" onclick="showChart(true)">📊 Diagramm anzeigen</button>
+    </div>
+
+    <div id="chart-view">
+        <div class="chart-container">
+            <canvas id="rainChart"></canvas>
+        </div>
+        <button class="btn btn-secondary" onclick="showChart(false)">⬅️ Zurück zur Übersicht</button>
     </div>
 
     <button class="btn" onclick="getWeather()">Jetzt aktualisieren</button>
@@ -155,14 +193,23 @@ let updateInterval = null;
 let countdownInterval = null;
 let letztesWetterData = null;
 let vorschauStunden = 2;
+let myChart = null; // Instanz für das Diagramm
 
 function changeHours(val) {
     vorschauStunden = parseInt(val);
     document.getElementById('slider-value').innerText = vorschauStunden === 1 ? "1 Stunde" : `${vorschauStunden} Stunden`;
-    document.getElementById('app-title').innerText = `🌧️ RainPulse (${vorschauStunden}h)`;
+    document.getElementById('app-title').innerText = `🌧️ RegenCheck (${vorschauStunden}h)`;
     
     if (letztesWetterData) {
         analyzeHourlyRain();
+    }
+}
+
+function showChart(visible) {
+    document.getElementById('main-view').style.display = visible ? 'none' : 'block';
+    document.getElementById('chart-view').style.display = visible ? 'block' : 'none';
+    if (visible && letztesWetterData) {
+        buildChart();
     }
 }
 
@@ -183,7 +230,8 @@ function getWeather() {
             const lon = position.coords.longitude.toFixed(4);
             geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
             
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&forecast_days=2&timezone=auto&cb=${Date.now()}`;
+            // NEU: &hourly=precipitation,weather_code hinzugefügt, um die Art des Regens zu bestimmen
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&hourly=weather_code&forecast_days=2&timezone=auto&cb=${Date.now()}`;
             
             statusDiv.innerHTML = "📡 Lade Wetterdaten...";
 
@@ -199,7 +247,7 @@ function getWeather() {
 
                     const jetzt = new Date();
                     const zeitStr = jetzt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    document.getElementById('update-info').innerText = `🔄 Live-Update active (Letzter Check: ${zeitStr})`;
+                    document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (Letzter Check: ${zeitStr})`;
                 })
                 .catch(err => {
                     statusDiv.innerHTML = "❌ Fehler beim Laden der Wetterdaten.";
@@ -214,12 +262,24 @@ function getWeather() {
 }
 
 function formatMinutenSchoen(gesamtMinuten) {
-    if (gesamtMinuten < 60) {
-        return `${gesamtMinuten} Min.`;
-    }
+    if (gesamtMinuten < 60) return `${gesamtMinuten} Min.`;
     const stunden = Math.floor(gesamtMinuten / 60);
     const minuten = gesamtMinuten % 60;
     return minuten === 0 ? `${stunden} Std.` : `${stunden} Std. ${minuten} Min.`;
+}
+
+// Hilfsfunktion: Wandelt den WMO Weather Code in lesbaren deutschen Text um
+function getWeatherCodeText(code) {
+    if (code === 0) return "Klarer Himmel";
+    if ([1, 2, 3].includes(code)) return "Bewölkt";
+    if ([51, 53, 55, 56, 57].includes(code)) return "Nieselregen";
+    if ([61, 63, 65].includes(code)) return "Regen";
+    if ([66, 67].includes(code)) return "Gefrierender Regen";
+    if ([71, 73, 75, 77].includes(code)) return "Schneefall ❄️";
+    if ([80, 81, 82].includes(code)) return "Regenschauer";
+    if ([85, 86].includes(code)) return "Schneschauer ❄️";
+    if ([95, 96, 99].includes(code)) return "Gewitter / Hagel ⚡";
+    return "Unbekannt";
 }
 
 function analyzeHourlyRain() {
@@ -236,42 +296,46 @@ function analyzeHourlyRain() {
     const aktuelleMinute = jetzt.getMinutes();
     
     let regenWerte = [];
+    let wetterCodes = [];
     for (let i = 0; i <= vorschauStunden; i++) {
         regenWerte.push(data.hourly.precipitation[aktuelleStunde + i] || 0);
+        wetterCodes.push(data.hourly.weather_code ? data.hourly.weather_code[aktuelleStunde + i] : 0);
     }
     
     const maxRain = Math.max(...regenWerte);
-    
-    // Zeitfenster berechnen (Start = Jetzt, Ende = Jetzt + Slider-Stunden)
     const formatUhrzeitKompakt = (dateObj) => dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    
     let startTimeStr = formatUhrzeitKompakt(jetzt);
     let zukunftSpaeter = new Date(jetzt.getTime() + vorschauStunden * 60 * 60 * 1000);
     let endTimeStr = formatUhrzeitKompakt(zukunftSpaeter);
     
-    // Oben unter die Überschrift rendern
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${startTimeStr} - ${endTimeStr} Uhr`;
     
     let durationStr = "";
     const rainNow = regenWerte[0] > 0;
+    
+    // Bestimme die Art des Niederschlags (Code des maximalen Regens im Fenster oder aktuell)
+    let maxRainIndex = regenWerte.indexOf(maxRain);
+    let dominanterCode = wetterCodes[maxRainIndex >= 0 ? maxRainIndex : 0];
+    let typeText = maxRain > 0 ? getWeatherCodeText(dominanterCode) : "Kein Niederschlag";
     
     if (maxRain === 0) {
         statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Regen in den nächsten ${vorschauStunden}h.</span>`;
         document.getElementById('label-duration').innerText = "Status:";
         durationStr = "Alles trocken";
     } else if (rainNow) {
-        statusDiv.innerHTML = "🌧️ Es regnet aktuell!";
+        statusDiv.innerHTML = `🌧️ Es gibt Niederschlag!`;
         document.getElementById('label-duration').innerText = "Dauer im Fenster:";
         
         let stopptNachStunden = regenWerte.findIndex(val => val === 0);
-        
         if (stopptNachStunden === -1 || stopptNachStunden >= vorschauStunden) {
-            durationStr = "Regnet durchgehend";
+            durationStr = "Durchgehend";
         } else {
             const minVerbleibend = (stopptNachStunden * 60) - aktuelleMinute;
             durationStr = `Noch ${formatMinutenSchoen(minVerbleibend)}`;
         }
     } else {
-        statusDiv.innerHTML = "⏳ Regen in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt bald an.</span>";
+        statusDiv.innerHTML = `⏳ Niederschlag in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt bald an.</span>`;
         document.getElementById('label-duration').innerText = "Startet in:";
         
         let startetInStunden = regenWerte.findIndex(val => val > 0);
@@ -286,6 +350,70 @@ function analyzeHourlyRain() {
 
     document.getElementById('duration').innerText = durationStr;
     document.getElementById('intensity').innerText = `${maxRain.toFixed(1)} mm/h (${intensityText})`;
+    document.getElementById('rain-type').innerText = typeText;
+
+    // Wenn die Chart-Ansicht gerade offen ist, aktualisieren wir das Diagramm live mit
+    if (document.getElementById('chart-view').style.display === 'block') {
+        buildChart();
+    }
+}
+
+// Funktion zur Erstellung des Treppendiagramms (Bar-Chart)
+function buildChart() {
+    const ctx = document.getElementById('rainChart').getContext('2d');
+    const jetzt = new Date();
+    const aktuelleStunde = jetzt.getHours();
+    
+    let labels = [];
+    let daten = [];
+    
+    for (let i = 0; i <= vorschauStunden; i++) {
+        let std = (aktuelleStunde + i) % 24;
+        labels.push(`${std.toString().padStart(2, '0')}:00`);
+        daten.push(letztesWetterData.hourly.precipitation[aktuelleStunde + i] || 0);
+    }
+    
+    if (myChart) {
+        myChart.destroy(); // Altes Diagramm löschen, um Überschneidungen zu verhindern
+    }
+    
+    myChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Niederschlag (mm/h)',
+                data: daten,
+                backgroundColor: '#38bdf8',
+                borderColor: '#0284c7',
+                borderWidth: 1,
+                barPercentage: 0.9, // Macht es kompakter, wie ein Treppendiagramm
+                categoryPercentage: 1.0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false } // Brauchen wir bei nur einem Datensatz nicht
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#a0a0ab', font: { size: 10 } }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { 
+                        color: '#a0a0ab', 
+                        font: { size: 10 },
+                        callback: function(value) { return value.toFixed(1) + ' mm'; }
+                    }
+                }
+            }
+        }
+    });
 }
 
 function startLiveCountdown() {
@@ -299,7 +427,6 @@ function startLiveCountdown() {
 
 window.addEventListener('DOMContentLoaded', () => {
     getWeather();
-    
     if (updateInterval) clearInterval(updateInterval);
     updateInterval = setInterval(getWeather, 300000);
 });
