@@ -115,10 +115,11 @@ function getWeather() {
     navigator.geolocation.getCurrentPosition((position) => {
         const lat = position.coords.latitude.toFixed(4);
         const lon = position.coords.longitude.toFixed(4);
+        const heute = new Date().toISOString().split('T')[0];
         updateLocationName(lat, lon);
         
-        const radarUrl = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}`;
-        const weatherUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}`;
+        const radarUrl = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&date=${heute}`;
+        const weatherUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}&date=${heute}`;
         statusDiv.innerHTML = "📡 Synchronisiere Wetterdaten...";
 
         fetch(radarUrl)
@@ -191,12 +192,11 @@ function renderUI() {
     const formatUhr = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatUhr(minutengenaueVorhersage[0].time)} - ${formatUhr(minutengenaueVorhersage[minutengenaueVorhersage.length-1].time)} Uhr`;
 
-    const rainThreshold = 0.001;
+    const rainThreshold = 0; // Aggressive Erkennung
     let aktuellRegenRadar = minutengenaueVorhersage[0].precip > rainThreshold;
     
-    // Prüfe auf Gewitter (WMO Codes 95, 96, 99) in der Wetter-API
     let hatGewitter = weatherData && weatherData.weather && 
-        weatherData.weather.slice(0, 2).some(e => [95, 96, 99].includes(e.weather_code));
+        weatherData.weather.slice(0, 3).some(e => [95, 96, 99, 3, 4, 37, 38, 39].includes(e.weather_code));
     
     let hatNiederschlagVorhersage = weatherData && weatherData.weather && 
         weatherData.weather.slice(0, 2).some(e => e.precipitation > 0);
