@@ -124,7 +124,7 @@
         .btn-secondary:active { background: rgba(255, 255, 255, 0.15); }
 
         .location-info {
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             color: var(--text-secondary);
             text-align: center;
             margin-top: 10px;
@@ -182,7 +182,7 @@
     </div>
 
     <button class="btn" onclick="getWeather()">Jetzt aktualisieren</button>
-    <div id="geo-info" class="location-info">Suche Standort-Signal...</div>
+    <div id="geo-info" class="location-info">📍 Suche Standort...</div>
     <div id="update-info" class="location-info" style="color: #4ade80; font-weight: 500;"></div>
 </div>
 
@@ -221,7 +221,9 @@ function getWeather() {
         (position) => {
             const lat = position.coords.latitude.toFixed(4);
             const lon = position.coords.longitude.toFixed(4);
-            geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
+            
+            // Ortsnamen via OpenStreetMap Nominatim abfragen
+            updateLocationName(lat, lon);
             
             const url = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&tz=Europe/Berlin`;
             statusDiv.innerHTML = "📡 Lade DWD 5-Minuten-Taktung...";
@@ -245,6 +247,37 @@ function getWeather() {
         (error) => { statusDiv.innerHTML = "❌ Ortung fehlgeschlagen."; },
         { enableHighAccuracy: false, timeout: 10000 }
     );
+}
+
+// Wandelt GPS Koordinaten in Stadt / Stadtteil um
+function updateLocationName(lat, lon) {
+    const geoInfo = document.getElementById('geo-info');
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`;
+
+    fetch(url, { headers: { 'User-Agent': 'RegenCheckUltraBot/1.4' } })
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.address) {
+                const addr = data.address;
+                // Extrahiere die bestmöglichen Bezeichnungen
+                const stadt = addr.city || addr.town || addr.village || addr.municipality || "";
+                const stadtteil = addr.suburb || addr.neighbourhood || addr.quarter || "";
+                
+                if (stadt &&  stadtteil) {
+                    geoInfo.innerHTML = `📍 ${stadt} (${stadtteil})`;
+                } else if (stadt) {
+                    geoInfo.innerHTML = `📍 ${stadt}`;
+                } else {
+                    geoInfo.innerHTML = `📍 ${data.display_name.split(',')[0]}`;
+                }
+            } else {
+                geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
+            }
+        })
+        .catch(() => {
+            // Fallback auf reine GPS Daten bei Netzwerkfehlern
+            geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
+        });
 }
 
 function processBrightSkyData() {
@@ -338,7 +371,6 @@ function renderUI() {
     if (currentPrecip > 0.5 && currentPrecip <= 2.0) intensityText = "Mäßig";
     if (currentPrecip > 2.0) intensityText = "Stark";
 
-    // Ermittle maximale Intensität im gesamten ausgewählten Zeitfenster für den Typ-Text
     let maxRainObj = minutengenaueVorhersage.reduce((max, p) => p.precip > max.precip ? p : max, minutengenaueVorhersage[0]);
     let typeText = "Kein Niederschlag";
     if (maxRainObj.precip > rainThreshold) {
@@ -355,11 +387,8 @@ function renderUI() {
 
 function buildChart() {
     const ctx = document.getElementById('rainChart').getContext('2d');
-    
     let labels = [];
     let daten = [];
-    
-    // Schrittweite dynamisch anpassen, damit das Diagramm übersichtlich bleibt
     let schrittweite = vorschauStunden <= 2 ? 2 : 5;
     
     for (let i = 0; i < minutengenaueVorhersage.length; i += schrittweite) {
