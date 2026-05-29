@@ -88,7 +88,7 @@
 <script>
 let countdownInterval = null;
 let radarData = null;
-let weatherData = null; // Neu: Speicher für die langfristige Wettervorhersage
+let weatherData = null;
 let vorschauStunden = 2;
 let myChart = null;
 let minutengenaueVorhersage = [];
@@ -116,20 +116,25 @@ function getWeather() {
         const lon = position.coords.longitude.toFixed(4);
         updateLocationName(lat, lon);
          
-        const radarUrl = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&tz=Europe/Berlin`;
-        const weatherUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}&tz=Europe/Berlin`;
+        const radarUrl = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}`;
+        const weatherUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}`;
         statusDiv.innerHTML = "📡 Synchronisiere Wetterdaten...";
 
-        // Beide APIs parallel abfragen
-        Promise.all([fetch(radarUrl), fetch(weatherUrl)])
-            .then(([radarRes, weatherRes]) => Promise.all([radarRes.json(), weatherRes.json()]))
-            .then(([radarJson, weatherJson]) => {
-                radarData = radarJson;
-                weatherData = weatherJson;
-                processHybridData();
-                startLiveCountdown();
-                document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (${new Date().toLocaleTimeString('de-DE')})`;
-            }).catch(() => { statusDiv.innerHTML = "❌ Fehler beim Laden der Daten."; });
+        Promise.all([
+            fetch(radarUrl).then(res => { if(!res.ok) throw new Error(); return res.json(); }),
+            fetch(weatherUrl).then(res => { if(!res.ok) throw new Error(); return res.json(); })
+        ])
+        .then(([radarJson, weatherJson]) => {
+            radarData = radarJson;
+            weatherData = weatherJson;
+            processHybridData();
+            startLiveCountdown();
+            document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (${new Date().toLocaleTimeString('de-DE')})`;
+        })
+        .catch((err) => { 
+            console.error(err);
+            statusDiv.innerHTML = "❌ Fehler beim Laden der Daten."; 
+        });
     }, () => { statusDiv.innerHTML = "❌ Ortung fehlgeschlagen."; });
 }
 
@@ -158,7 +163,6 @@ function processHybridData() {
         let finalPrecip = 0;
 
         if (m <= 120) {
-            // STRATEGIE 1: Die ersten 2 Stunden nutzen die hochpräzise Radar-Interpolation (Deine 13 Minuten bleiben stabil!)
             let pLeft = radarEntries[0], pRight = radarEntries[radarEntries.length-1];
             for (let i=0; i<radarEntries.length-1; i++) {
                 if (radarEntries[i].time <= targetTime && radarEntries[i+1].time >= targetTime) { pLeft = radarEntries[i]; pRight = radarEntries[i+1]; break; }
@@ -170,7 +174,6 @@ function processHybridData() {
                 finalPrecip = pLeft.precip;
             }
         } else {
-            // STRATEGIE 2: Ab Minute 121 schalten wir nahtlos auf das stündliche Wettermodell um
             let wLeft = weatherEntries[0];
             for (let i=0; i<weatherEntries.length; i++) {
                 if (weatherEntries[i].time <= targetTime) { wLeft = weatherEntries[i]; }
