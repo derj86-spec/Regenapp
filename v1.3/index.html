@@ -100,58 +100,54 @@ function handleSlider(val) {
     vorschauStunden = sliderMap[val];
     document.getElementById('slider-value').innerText = `${vorschauStunden} Stunden`;
     document.getElementById('app-title').innerText = `🌧️ Regen Check (${vorschauStunden}h)`;
-    if (radarData) { processHybridData(); }
+    if (radarData) processHybridData();
 }
 
 function showChart(visible) {
     document.getElementById('main-view').style.display = visible ? 'none' : 'block';
     document.getElementById('chart-view').style.display = visible ? 'block' : 'none';
-    if (visible && radarData) { buildChart(); }
+    if (visible && radarData) buildChart();
 }
 
 function getWeather() {
     const statusDiv = document.getElementById('status');
     statusDiv.innerHTML = "🔄 Bestimme Standort...";
+    
+    if (!navigator.geolocation) {
+        statusDiv.innerHTML = "❌ GPS nicht verfügbar.";
+        return;
+    }
+
     navigator.geolocation.getCurrentPosition((position) => {
         const lat = position.coords.latitude.toFixed(4);
         const lon = position.coords.longitude.toFixed(4);
-        const heute = new Date().toISOString().split('T')[0];
         updateLocationName(lat, lon);
-        
-        const radarUrl = `https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}&date=${heute}`;
-        const weatherUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}&date=${heute}`;
-        statusDiv.innerHTML = "📡 Synchronisiere Wetterdaten...";
+        statusDiv.innerHTML = "📡 Lade Wetterdaten...";
 
-        fetch(radarUrl)
-            .then(res => { if(!res.ok) throw new Error(); return res.json(); })
-            .then(radarJson => {
-                radarData = radarJson;
-                return fetch(weatherUrl)
-                    .then(res => res.ok ? res.json() : null)
-                    .then(weatherJson => {
-                        weatherData = weatherJson;
-                        document.getElementById('update-info').style.color = '#4ade80';
-                        document.getElementById('update-info').innerText = `🔄 Live-Update (${new Date().toLocaleTimeString('de-DE')})`;
-                    })
-                    .catch(() => {
-                        weatherData = null;
-                        document.getElementById('update-info').style.color = '#eab308';
-                        document.getElementById('update-info').innerText = `⚠️ Nur Radar-Modus (${new Date().toLocaleTimeString('de-DE')})`;
-                    });
-            })
-            .then(() => {
-                processHybridData();
-                startLiveCountdown();
-            })
-            .catch(() => { statusDiv.innerHTML = "❌ Fehler beim Laden."; });
-    }, () => { statusDiv.innerHTML = "❌ Ortung fehlgeschlagen."; });
+        // Promise.all für gleichzeitiges Laden beider Endpunkte
+        Promise.all([
+            fetch(`https://api.brightsky.dev/radar?lat=${lat}&lon=${lon}`).then(res => res.json()),
+            fetch(`https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}`).then(res => res.json())
+        ])
+        .then(([radarJson, weatherJson]) => {
+            radarData = radarJson;
+            weatherData = weatherJson;
+            document.getElementById('update-info').innerText = `🔄 Live-Update (${new Date().toLocaleTimeString('de-DE')})`;
+            processHybridData();
+            startLiveCountdown();
+        })
+        .catch(err => {
+            console.error("API-Fehler:", err);
+            statusDiv.innerHTML = "⚠️ API aktuell nicht erreichbar.";
+        });
+    }, () => { statusDiv.innerHTML = "❌ Standort verweigert."; });
 }
 
 function updateLocationName(lat, lon) {
-    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`, { headers: { 'User-Agent': 'RegenCheckBot/1.5' } })
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, { headers: { 'User-Agent': 'RegenCheckBot/1.5' } })
         .then(res => res.json()).then(data => {
             const addr = data.address;
-            const stadt = addr.city || addr.town || addr.village || "";
+            const stadt = addr?.city || addr?.town || addr?.village || "";
             document.getElementById('geo-info').innerHTML = `📍 ${stadt || 'GPS: '+lat+', '+lon}`;
         }).catch(() => { document.getElementById('geo-info').innerHTML = `📍 GPS: ${lat}, ${lon}`; });
 }
@@ -192,42 +188,28 @@ function renderUI() {
     const formatUhr = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatUhr(minutengenaueVorhersage[0].time)} - ${formatUhr(minutengenaueVorhersage[minutengenaueVorhersage.length-1].time)} Uhr`;
 
-    const rainThreshold = 0; // Aggressive Erkennung
-    let aktuellRegenRadar = minutengenaueVorhersage[0].precip > rainThreshold;
-    
-    let hatGewitter = weatherData && weatherData.weather && 
-        weatherData.weather.slice(0, 3).some(e => [95, 96, 99, 3, 4, 37, 38, 39].includes(e.weather_code));
-    
-    let hatNiederschlagVorhersage = weatherData && weatherData.weather && 
-        weatherData.weather.slice(0, 2).some(e => e.precipitation > 0);
-
-    let durationStr = "";
+    const rainThreshold = 0; 
+    let hatGewitter = weatherData && weatherData.weather && weatherData.weather.slice(0, 3).some(e => [95, 96, 99, 3, 4, 37, 38, 39].includes(e.weather_code));
+    let aktuellRegen = minutengenaueVorhersage[0].precip > rainThreshold;
 
     if (hatGewitter) {
         statusDiv.innerHTML = `<span style="color: var(--accent-orange);">⚡ Gewittergefahr!</span>`;
-        durationStr = "Gewitter aktiv";
+        document.getElementById('duration').innerText = "Gewitter aktiv";
         document.getElementById('label-duration').innerText = "Status:";
-    } else if (aktuellRegenRadar || hatNiederschlagVorhersage) {
+    } else if (aktuellRegen) {
         statusDiv.innerHTML = `<span style="color: var(--accent-blue);">🌧️ Es regnet aktuell!</span>`;
         let idx = minutengenaueVorhersage.findIndex(p => p.precip <= rainThreshold);
-        durationStr = idx === -1 ? "Regnet vorerst durch" : `${idx} Min.`;
+        document.getElementById('duration').innerText = idx === -1 ? "Regnet vorerst durch" : `${idx} Min.`;
         document.getElementById('label-duration').innerText = "Trocken in ca.:";
     } else {
         let idx = minutengenaueVorhersage.findIndex(p => p.precip > rainThreshold);
-        if (idx === -1) { 
-            statusDiv.innerHTML = `☀️ Trocken!`; 
-            durationStr = "Alles trocken"; 
-        } else { 
-            statusDiv.innerHTML = `⏳ Niederschlag zieht auf!`; 
-            durationStr = `${idx} Min.`; 
-            document.getElementById('label-duration').innerText = "Startet in ca.:"; 
-        }
+        statusDiv.innerHTML = idx === -1 ? `☀️ Trocken!` : `⏳ Niederschlag zieht auf!`;
+        document.getElementById('duration').innerText = idx === -1 ? "Alles trocken" : `${idx} Min.`;
+        document.getElementById('label-duration').innerText = idx === -1 ? "Status:" : "Startet in ca.:";
     }
 
-    document.getElementById('duration').innerText = durationStr;
     document.getElementById('intensity').innerText = `${minutengenaueVorhersage[0].precip.toFixed(2)} mm/h`;
     document.getElementById('rain-type').innerText = hatGewitter ? "Gewittergefahr ⚡" : (minutengenaueVorhersage[0].precip > 0.01 ? "Regen" : "Trocken");
-    
     if (document.getElementById('chart-view').style.display === 'block') buildChart();
 }
 
