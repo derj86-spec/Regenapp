@@ -231,7 +231,7 @@ function getWeather() {
             geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
             
             // Verbindung zu deiner DWD-Radar-Pipeline auf deinem VPS
-            const url = `http://46.225.101.203:5000/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`;
+            const url = `https://46.225.101.203:5000/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`;
             
             statusDiv.innerHTML = "📡 Lade DWD-Wetterdaten...";
 
