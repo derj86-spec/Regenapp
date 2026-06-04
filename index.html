@@ -230,10 +230,10 @@ function getWeather() {
             const lon = position.coords.longitude.toFixed(4);
             geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
             
-            // NEU: &hourly=precipitation,weather_code hinzugefügt, um die Art des Regens zu bestimmen
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&hourly=weather_code&forecast_days=2&timezone=auto&cb=${Date.now()}`;
+            // Verbindung zu deiner DWD-Radar-Pipeline auf deinem VPS
+            const url = `http://46.225.101.203:5000/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`;
             
-            statusDiv.innerHTML = "📡 Lade Wetterdaten...";
+            statusDiv.innerHTML = "📡 Lade DWD-Wetterdaten...";
 
             fetch(url)
                 .then(res => {
@@ -257,7 +257,7 @@ function getWeather() {
         (error) => {
             statusDiv.innerHTML = "❌ Ortung fehlgeschlagen.";
         },
-        { enableHighAccuracy: false, timeout: 10000 }
+        { enableHighAccuracy: true, timeout: 10000 }
     );
 }
 
@@ -268,7 +268,6 @@ function formatMinutenSchoen(gesamtMinuten) {
     return minuten === 0 ? `${stunden} Std.` : `${stunden} Std. ${minuten} Min.`;
 }
 
-// Hilfsfunktion: Wandelt den WMO Weather Code in lesbaren deutschen Text um
 function getWeatherCodeText(code) {
     if (code === 0) return "Klarer Himmel";
     if ([1, 2, 3].includes(code)) return "Bewölkt";
@@ -293,7 +292,6 @@ function analyzeHourlyRain() {
 
     const jetzt = new Date();
     const aktuelleStunde = jetzt.getHours();
-    const aktuelleMinute = jetzt.getMinutes();
     
     let regenWerte = [];
     let wetterCodes = [];
@@ -312,53 +310,51 @@ function analyzeHourlyRain() {
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${startTimeStr} - ${endTimeStr} Uhr`;
     
     let durationStr = "";
-    const rainNow = regenWerte[0] > 0;
     
-    // Bestimme die Art des Niederschlags (Code des maximalen Regens im Fenster oder aktuell)
     let maxRainIndex = regenWerte.indexOf(maxRain);
     let dominanterCode = wetterCodes[maxRainIndex >= 0 ? maxRainIndex : 0];
     let typeText = maxRain > 0 ? getWeatherCodeText(dominanterCode) : "Kein Niederschlag";
     
-    if (maxRain === 0) {
-        statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Regen in den nächsten ${vorschauStunden}h.</span>`;
-        document.getElementById('label-duration').innerText = "Status:";
-        durationStr = "Alles trocken";
-    } else if (rainNow) {
+    // Verarbeitet die echten 5-Minuten-Radar-Signale deines VPS
+    if (data.high_precision && data.high_precision.rain_now) {
         statusDiv.innerHTML = `🌧️ Es gibt Niederschlag!`;
         document.getElementById('label-duration').innerText = "Dauer im Fenster:";
-        
-        let stopptNachStunden = regenWerte.findIndex(val => val === 0);
-        if (stopptNachStunden === -1 || stopptNachStunden >= vorschauStunden) {
-            durationStr = "Durchgehend";
-        } else {
-            const minVerbleibend = (stopptNachStunden * 60) - aktuelleMinute;
-            durationStr = `Noch ${formatMinutenSchoen(minVerbleibend)}`;
-        }
-    } else {
-        statusDiv.innerHTML = `⏳ Niederschlag in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt bald an.</span>`;
+        durationStr = "Akut (Live-Radar schlägt an)";
+        typeText = "Radar-Detektion 📡";
+    } else if (data.high_precision && data.high_precision.minuten_bis_regen > 0) {
+        const echtesRadvorIntervall = data.high_precision.minuten_bis_regen;
+        statusDiv.innerHTML = `⏳ Niederschlag in ${echtesRadvorIntervall} Min.!<br><span style='font-size:0.9rem; color:#a0a0ab;'>RADVOR Kurzfristprognose aktiv.</span>`;
         document.getElementById('label-duration').innerText = "Startet in:";
-        
-        let startetInStunden = regenWerte.findIndex(val => val > 0);
-        const minBisStart = (startetInStunden * 60) - aktuelleMinute;
-        durationStr = formatMinutenSchoen(minBisStart);
+        durationStr = formatMinutenSchoen(echtesRadvorIntervall);
+    } else {
+        if (maxRain === 0) {
+            statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Kein Regen in den nächsten ${vorschauStunden}h.</span>`;
+            document.getElementById('label-duration').innerText = "Status:";
+            durationStr = "Alles trocken";
+        } else {
+            statusDiv.innerHTML = `⏳ Niederschlag in Sicht!<br><span style='font-size:0.9rem; color:#a0a0ab;'>Es fängt bald an.</span>`;
+            document.getElementById('label-duration').innerText = "Startet in:";
+            let startetInStunden = regenWerte.findIndex(val => val > 0);
+            durationStr = `Ca. ${startetInStunden} Std.`;
+        }
     }
 
     let intensityText = "Keiner";
-    if (maxRain > 0 && maxRain <= 0.5) intensityText = "Leicht";
-    if (maxRain > 0.5 && maxRain <= 2.0) intensityText = "Mäßig";
-    if (maxRain > 2.0) intensityText = "Stark";
+    const aktuelleIntensitaet = (data.high_precision && data.high_precision.rain_now) ? data.high_precision.current_intensity : maxRain;
+    
+    if (aktuelleIntensitaet > 0 && aktuelleIntensitaet <= 0.5) intensityText = "Leicht";
+    if (aktuelleIntensitaet > 0.5 && aktuelleIntensitaet <= 2.0) intensityText = "Mäßig";
+    if (aktuelleIntensitaet > 2.0) intensityText = "Stark";
 
     document.getElementById('duration').innerText = durationStr;
-    document.getElementById('intensity').innerText = `${maxRain.toFixed(1)} mm/h (${intensityText})`;
+    document.getElementById('intensity').innerText = `${aktuelleIntensitaet.toFixed(1)} mm/h (${intensityText})`;
     document.getElementById('rain-type').innerText = typeText;
 
-    // Wenn die Chart-Ansicht gerade offen ist, aktualisieren wir das Diagramm live mit
     if (document.getElementById('chart-view').style.display === 'block') {
         buildChart();
     }
 }
 
-// Funktion zur Erstellung des Treppendiagramms (Bar-Chart)
 function buildChart() {
     const ctx = document.getElementById('rainChart').getContext('2d');
     const jetzt = new Date();
@@ -374,7 +370,7 @@ function buildChart() {
     }
     
     if (myChart) {
-        myChart.destroy(); // Altes Diagramm löschen, um Überschneidungen zu verhindern
+        myChart.destroy();
     }
     
     myChart = new Chart(ctx, {
@@ -387,7 +383,7 @@ function buildChart() {
                 backgroundColor: '#38bdf8',
                 borderColor: '#0284c7',
                 borderWidth: 1,
-                barPercentage: 0.9, // Macht es kompakter, wie ein Treppendiagramm
+                barPercentage: 0.9,
                 categoryPercentage: 1.0
             }]
         },
@@ -395,7 +391,7 @@ function buildChart() {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { display: false } // Brauchen wir bei nur einem Datensatz nicht
+                legend: { display: false }
             },
             scales: {
                 x: {
@@ -422,13 +418,13 @@ function startLiveCountdown() {
         if (letztesWetterData) {
             analyzeHourlyRain();
         }
-    }, 1000); 
+    }, 5000); 
 }
 
 window.addEventListener('DOMContentLoaded', () => {
     getWeather();
     if (updateInterval) clearInterval(updateInterval);
-    updateInterval = setInterval(getWeather, 300000);
+    updateInterval = setInterval(getWeather, 300000); // Präzises 5-Minuten-Intervall
 });
 </script>
 
