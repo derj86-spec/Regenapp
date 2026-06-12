@@ -375,17 +375,18 @@ function buildChart() {
     }
     
     myChart = new Chart(ctx, {
-        type: 'bar',
+        type: 'line', // Auf 'line' für den Graphen gewechselt
         data: {
             labels: labels,
             datasets: [{
                 label: 'Niederschlag (mm/h)',
                 data: daten,
-                backgroundColor: '#38bdf8',
-                borderColor: '#0284c7',
-                borderWidth: 1,
-                barPercentage: 0.9,
-                categoryPercentage: 1.0
+                borderColor: '#38bdf8',       // Die Linienfarbe
+                backgroundColor: 'rgba(56, 189, 248, 0.15)', // Schicke blaue Füllung unter der Linie
+                fill: true,                  // Aktiviert die Füllung
+                tension: 0.4,                // Glättet die Linie für geschmeidige Kurven
+                borderWidth: 2,
+                pointBackgroundColor: '#38bdf8' // Sichtbare Punkte auf den Stundenwerten
             }]
         },
         options: {
