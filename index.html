@@ -226,9 +226,27 @@ function getWeather() {
         (position) => {
             const lat = position.coords.latitude.toFixed(4);
             const lon = position.coords.longitude.toFixed(4);
+            
+            // Erstmal GPS als Platzhalter anzeigen
             geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
             
-            // Verbindung mit Cache-Breaker
+            // Ortsnamen via OpenStreetMap Nominatim API holen
+            const geoCodingUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`;
+            
+            fetch(geoCodingUrl, { headers: { 'Accept-Language': 'de' } })
+                .then(res => res.json())
+                .then(geoData => {
+                    if (geoData && geoData.address) {
+                        const addr = geoData.address;
+                        const stadt = addr.city || addr.town || addr.village || addr.suburb || "Unbekannter Ort";
+                        const viertel = addr.suburb || addr.neighbourhood || addr.road || "";
+                        
+                        geoInfo.innerHTML = viertel ? `📍 ${stadt} (${viertel})` : `📍 ${stadt}`;
+                    }
+                })
+                .catch(err => console.error("Geocoding Fehler:", err));
+            
+            // Verbindung zu deiner DWD-Radar-Pipeline auf deinem VPS
             const url = `https://46-225-101-203.sslip.io:5000/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`;
             
             statusDiv.innerHTML = "📡 Lade DWD-Wetterdaten...";
@@ -288,7 +306,6 @@ function analyzeHourlyRain() {
     let typeText = "Kein Niederschlag";
     let aktuelleIntensitaet = 0.0;
 
-    // PRÄZISE DWD-NOWCAST WEICHENSTELLUNG
     if (data.high_precision && data.high_precision.rain_now) {
         statusDiv.innerHTML = `🌧️ Es regnet jetzt!`;
         document.getElementById('label-duration').innerText = "Status:";
@@ -303,7 +320,6 @@ function analyzeHourlyRain() {
         typeText = "Anziehende Front 🌧️";
         aktuelleIntensitaet = data.high_precision.current_intensity || 0.1;
     } else {
-        // Fallback auf stündliche Vorschau falls das Radar komplett leer ist
         let maxRain = 0;
         if (data.hourly && data.hourly.precipitation) {
             const aktuelleStunde = jetzt.getHours();
