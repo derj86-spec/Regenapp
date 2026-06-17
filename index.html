@@ -313,7 +313,7 @@ function analyzeHourlyRain() {
         document.getElementById('label-duration').innerText = "Status:";
         durationStr = "Akuter Niederschlag";
         typeText = "DWD Live-Radar 📡";
-        aktuelleIntensitaet = data.high_precision.current_intensity;
+        actuelleIntensitaet = data.high_precision.current_intensity;
     } else if (data.high_precision && data.high_precision.minuten_bis_regen > 0) {
         const minuten = data.high_precision.minuten_bis_regen;
         statusDiv.innerHTML = `⏳ Niederschlag in ${minuten} Min.!<br><span style='font-size:0.85rem; color:#a0a0ab;'>DWD 5-Minuten-Radarprognose.</span>`;
@@ -380,8 +380,10 @@ function buildChart() {
                         letztesWetterData.high_precision.radar_5min;
     }
     
-    // INTELLIGENTE WEICHE
-    if (vorschauStunden <= 2 && prognoseListe && Array.isArray(prognoseListe) && prognoseListe.length > 0) {
+    // Ermitteln, ob wir im hochauflösenden Modus (Kurve) oder Weitblick (Balken) sind
+    const istKurvenModus = (vorschauStunden <= 2 && prognoseListe && Array.isArray(prognoseListe) && prognoseListe.length > 0);
+    
+    if (istKurvenModus) {
         // HOCHAUFLÖSENDER MODUS (5-Minuten-Radar)
         const maxPunkte = vorschauStunden * 12; 
         const relevantePunkte = prognoseListe.slice(0, maxPunkte + 1);
@@ -417,21 +419,33 @@ function buildChart() {
         myChart.destroy();
     }
     
+    // Dynamische Konfiguration je nach Modus
+    const chartType = istKurvenModus ? 'line' : 'bar';
+    
+    let datasetConfig = {
+        label: 'Niederschlag (mm/h)',
+        data: daten,
+        borderColor: '#38bdf8',
+        backgroundColor: istKurvenModus ? 'rgba(56, 189, 248, 0.15)' : 'rgba(56, 189, 248, 0.65)',
+    };
+
+    // Zusätzliche optische Feineinstellungen für die Linie bzw. Balken
+    if (istKurvenModus) {
+        datasetConfig.fill = true;
+        datasetConfig.tension = 0.3;
+        datasetConfig.borderWidth = 2;
+        datasetConfig.pointRadius = 0; // Keine unruhigen Punkte in der feinen Kurve
+    } else {
+        datasetConfig.borderRadius = 4; // Leicht abgerundete Ecken für die Balken
+        datasetConfig.borderWidth = 0;
+        datasetConfig.barPercentage = 0.8; // Breite der Balken steuern
+    }
+    
     myChart = new Chart(ctx, {
-        type: 'line',
+        type: chartType,
         data: {
             labels: labels,
-            datasets: [{
-                label: 'Niederschlag (mm/h)',
-                data: daten,
-                borderColor: '#38bdf8',
-                backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                fill: true,
-                tension: 0.3,
-                borderWidth: 2,
-                pointRadius: vorschauStunden <= 2 ? 0 : 3,
-                pointBackgroundColor: '#38bdf8'
-            }]
+            datasets: [datasetConfig]
         },
         options: {
             responsive: true,
@@ -443,7 +457,7 @@ function buildChart() {
                     ticks: { 
                         color: '#a0a0ab', 
                         font: { size: 10 },
-                        maxTicksLimit: vorschauStunden <= 2 ? 5 : 6 
+                        maxTicksLimit: istKurvenModus ? 5 : 8 // Mehr Platz für die stündliche Achse
                     }
                 },
                 y: {
