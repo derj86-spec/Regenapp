@@ -244,7 +244,7 @@ function getWeather() {
                 })
                 .catch(err => console.error("Geocoding Fehler:", err));
             
-            const url = `https://46-225-101-203.sslip.io:5000/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`;
+            const url = `https://46-225-101-203.sslip.io/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`;
             
             statusDiv.innerHTML = "📡 Lade DWD-Wetterdaten...";
 
