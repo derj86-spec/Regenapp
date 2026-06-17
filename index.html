@@ -455,7 +455,7 @@ function buildChart() {
                 x: {
                     border: {
                         display: true,
-                        color: 'rgba(255, 255, 255, 0.15)' // Erzwingt eine sichtbare Nulllinie im Dark Mode
+                        color: 'rgba(255, 255, 255, 0.25)' // Schön sichtbare weiße Basislinie
                     },
                     grid: { display: false },
                     ticks: { 
@@ -466,6 +466,7 @@ function buildChart() {
                 },
                 y: {
                     beginAtZero: true,
+                    suggestedMax: 1.0, // Erzwingt bei Trockenheit eine Skala bis 1.0mm, damit die Nulllinie unten bleibt!
                     border: { display: false },
                     grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     ticks: { 
