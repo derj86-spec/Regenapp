@@ -313,7 +313,7 @@ function analyzeHourlyRain() {
         document.getElementById('label-duration').innerText = "Status:";
         durationStr = "Akuter Niederschlag";
         typeText = "DWD Live-Radar 📡";
-        actuelleIntensitaet = data.high_precision.current_intensity;
+        aktuelleIntensitaet = data.high_precision.current_intensity;
     } else if (data.high_precision && data.high_precision.minuten_bis_regen > 0) {
         const minuten = data.high_precision.minuten_bis_regen;
         statusDiv.innerHTML = `⏳ Niederschlag in ${minuten} Min.!<br><span style='font-size:0.85rem; color:#a0a0ab;'>DWD 5-Minuten-Radarprognose.</span>`;
@@ -453,6 +453,10 @@ function buildChart() {
             plugins: { legend: { display: false } },
             scales: {
                 x: {
+                    border: {
+                        display: true,
+                        color: 'rgba(255, 255, 255, 0.15)' // Erzwingt eine sichtbare Nulllinie im Dark Mode
+                    },
                     grid: { display: false },
                     ticks: { 
                         color: '#a0a0ab', 
@@ -462,6 +466,7 @@ function buildChart() {
                 },
                 y: {
                     beginAtZero: true,
+                    border: { display: false },
                     grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     ticks: { 
                         color: '#a0a0ab', 
