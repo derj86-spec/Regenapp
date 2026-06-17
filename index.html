@@ -159,7 +159,7 @@
             <span>Vorschau-Zeitraum:</span>
             <span id="slider-value">2 Stunden</span>
         </div>
-        <input type="range" id="time-slider" class="range-slider" min="1" max="6" value="2" oninput="changeHours(this.value)">
+        <input type="range" id="time-slider" class="range-slider" min="0" max="7" value="1" oninput="changeHours(this.value)">
     </div>
 
     <div id="main-view">
@@ -193,8 +193,13 @@ let letztesWetterData = null;
 let vorschauStunden = 2;
 let myChart = null;
 
-function changeHours(val) {
-    vorschauStunden = parseInt(val);
+// Definition deiner exakten Wunsch-Intervalle
+const stundenStufen = [1, 2, 3, 4, 5, 6, 12, 24];
+
+function changeHours(sliderIndex) {
+    // Wandelt den Index (0 bis 7) in die tatsächliche Stundenanzahl um
+    vorschauStunden = stundenStufen[parseInt(sliderIndex)];
+    
     document.getElementById('slider-value').innerText = vorschauStunden === 1 ? "1 Stunde" : `${vorschauStunden} Stunden`;
     document.getElementById('app-title').innerText = `🌧️ RegenCheck (${vorschauStunden}h)`;
     
@@ -260,7 +265,7 @@ function getWeather() {
 
                     const jetzt = new Date();
                     const zeitStr = jetzt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (Letzter Check: ${zeitStr})`;
+                    document.getElementById('update-info').innerText = `🔄 Live-Update active (Letzter Check: ${zeitStr})`;
                 })
                 .catch(err => {
                     statusDiv.innerHTML = "❌ Fehler beim Laden der Wetterdaten.";
@@ -318,10 +323,18 @@ function analyzeHourlyRain() {
         aktuelleIntensitaet = data.high_precision.current_intensity || 0.1;
     } else {
         let maxRain = 0;
-        if (data.hourly && data.hourly.precipitation) {
-            const aktuelleStunde = jetzt.getHours();
-            let vorschauWerte = data.hourly.precipitation.slice(aktuelleStunde, aktuelleStunde + vorschauStunden + 1);
-            maxRain = Math.max(...vorschauWerte, 0);
+        if (data.hourly && data.hourly.precipitation && data.hourly.time) {
+            const jetztTs = jetzt.getTime();
+            const limitTs = jetztTs + (vorschauStunden * 3600000);
+            
+            // Filtert alle Stundenwerte, die exakt im ausgewählten Schieberegler-Zeitfenster liegen
+            for (let i = 0; i < data.hourly.time.length; i++) {
+                let punktTs = new Date(data.hourly.time[i]).getTime();
+                if (punktTs >= (jetztTs - 1800000) && punktTs <= limitTs) {
+                    let val = data.hourly.precipitation[i] || 0;
+                    if (val > maxRain) maxRain = val;
+                }
+            }
         }
 
         if (maxRain === 0) {
@@ -360,7 +373,6 @@ function buildChart() {
     let labels = [];
     let daten = [];
     
-    // Erkennt automatisch, wie die 5-Minuten-Struktur im API-Paket heißt
     let prognoseListe = null;
     if (letztesWetterData && letztesWetterData.high_precision) {
         prognoseListe = letztesWetterData.high_precision.forecast_5min || 
@@ -382,11 +394,22 @@ function buildChart() {
         });
     } else {
         // ÜBERBLICKS-MODUS (Stündliche Modellwerte)
-        const aktuelleStunde = jetzt.getHours();
-        for (let i = 0; i <= vorschauStunden; i++) {
-            let std = (aktuelleStunde + i) % 24;
-            labels.push(`${std.toString().padStart(2, '0')}:00`);
-            daten.push(letztesWetterData.hourly && letztesWetterData.hourly.precipitation ? (letztesWetterData.hourly.precipitation[aktuelleStunde + i] || 0) : 0);
+        if (letztesWetterData.hourly && letztesWetterData.hourly.time && letztesWetterData.hourly.precipitation) {
+            const jetztTs = jetzt.getTime();
+            const limitTs = jetztTs + (vorschauStunden * 3600000);
+            
+            for (let i = 0; i < letztesWetterData.hourly.time.length; i++) {
+                let punktStr = letztesWetterData.hourly.time[i];
+                let punktDt = new Date(punktStr);
+                let punktTs = punktDt.getTime();
+                
+                // Nimm die Werte ab der aktuellen Stunde bis zum ausgewählten Stunden-Limit
+                if (punktTs >= (jetztTs - 1800000) && punktTs <= limitTs) {
+                    let zeitString = punktDt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                    labels.push(zeitString);
+                    daten.push(letztesWetterData.hourly.precipitation[i] || 0);
+                }
+            }
         }
     }
     
@@ -406,7 +429,7 @@ function buildChart() {
                 fill: true,
                 tension: 0.3,
                 borderWidth: 2,
-                pointRadius: vorschauStunden <= 2 ? 0 : 3, // Blendet die dicken Punkte bei 5-Min aus, damit die Linie clean bleibt
+                pointRadius: vorschauStunden <= 2 ? 0 : 3,
                 pointBackgroundColor: '#38bdf8'
             }]
         },
@@ -420,7 +443,7 @@ function buildChart() {
                     ticks: { 
                         color: '#a0a0ab', 
                         font: { size: 10 },
-                        maxTicksLimit: vorschauStunden <= 2 ? 5 : 7 
+                        maxTicksLimit: vorschauStunden <= 2 ? 5 : 6 
                     }
                 },
                 y: {
