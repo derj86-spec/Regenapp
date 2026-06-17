@@ -193,11 +193,9 @@ let letztesWetterData = null;
 let vorschauStunden = 2;
 let myChart = null;
 
-// Definition deiner exakten Wunsch-Intervalle
 const stundenStufen = [1, 2, 3, 4, 5, 6, 12, 24];
 
 function changeHours(sliderIndex) {
-    // Wandelt den Index (0 bis 7) in die tatsächliche Stundenanzahl um
     vorschauStunden = stundenStufen[parseInt(sliderIndex)];
     
     document.getElementById('slider-value').innerText = vorschauStunden === 1 ? "1 Stunde" : `${vorschauStunden} Stunden`;
@@ -327,10 +325,9 @@ function analyzeHourlyRain() {
             const jetztTs = jetzt.getTime();
             const limitTs = jetztTs + (vorschauStunden * 3600000);
             
-            // Filtert alle Stundenwerte, die exakt im ausgewählten Schieberegler-Zeitfenster liegen
             for (let i = 0; i < data.hourly.time.length; i++) {
                 let punktTs = new Date(data.hourly.time[i]).getTime();
-                if (punktTs >= (jetztTs - 1800000) && punktTs <= limitTs) {
+                if (punktTs >= (jetztTs - 2700000) && punktTs <= limitTs) {
                     let val = data.hourly.precipitation[i] || 0;
                     if (val > maxRain) maxRain = val;
                 }
@@ -367,7 +364,9 @@ function analyzeHourlyRain() {
 }
 
 function buildChart() {
-    const ctx = document.getElementById('rainChart').getContext('2d');
+    const canvas = document.getElementById('rainChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     const jetzt = new Date();
     
     let labels = [];
@@ -380,11 +379,9 @@ function buildChart() {
                         letztesWetterData.high_precision.radar_5min;
     }
     
-    // Ermitteln, ob wir im hochauflösenden Modus (Kurve) oder Weitblick (Balken) sind
     const istKurvenModus = (vorschauStunden <= 2 && prognoseListe && Array.isArray(prognoseListe) && prognoseListe.length > 0);
     
     if (istKurvenModus) {
-        // HOCHAUFLÖSENDER MODUS (5-Minuten-Radar)
         const maxPunkte = vorschauStunden * 12; 
         const relevantePunkte = prognoseListe.slice(0, maxPunkte + 1);
         
@@ -395,7 +392,6 @@ function buildChart() {
             daten.push(punkt.precipitation);
         });
     } else {
-        // ÜBERBLICKS-MODUS (Stündliche Modellwerte)
         if (letztesWetterData.hourly && letztesWetterData.hourly.time && letztesWetterData.hourly.precipitation) {
             const jetztTs = jetzt.getTime();
             const limitTs = jetztTs + (vorschauStunden * 3600000);
@@ -405,8 +401,7 @@ function buildChart() {
                 let punktDt = new Date(punktStr);
                 let punktTs = punktDt.getTime();
                 
-                // Nimm die Werte ab der aktuellen Stunde bis zum ausgewählten Stunden-Limit
-                if (punktTs >= (jetztTs - 1800000) && punktTs <= limitTs) {
+                if (punktTs >= (jetztTs - 2700000) && punktTs <= limitTs) {
                     let zeitString = punktDt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
                     labels.push(zeitString);
                     daten.push(letztesWetterData.hourly.precipitation[i] || 0);
@@ -415,11 +410,10 @@ function buildChart() {
         }
     }
     
-    if (myChart) {
+    if (myChart && typeof myChart.destroy === 'function') {
         myChart.destroy();
     }
     
-    // Dynamische Konfiguration je nach Modus
     const chartType = istKurvenModus ? 'line' : 'bar';
     
     let datasetConfig = {
@@ -429,16 +423,15 @@ function buildChart() {
         backgroundColor: istKurvenModus ? 'rgba(56, 189, 248, 0.15)' : 'rgba(56, 189, 248, 0.65)',
     };
 
-    // Zusätzliche optische Feineinstellungen für die Linie bzw. Balken
     if (istKurvenModus) {
         datasetConfig.fill = true;
         datasetConfig.tension = 0.3;
         datasetConfig.borderWidth = 2;
-        datasetConfig.pointRadius = 0; // Keine unruhigen Punkte in der feinen Kurve
+        datasetConfig.pointRadius = 0; 
     } else {
-        datasetConfig.borderRadius = 4; // Leicht abgerundete Ecken für die Balken
+        datasetConfig.borderRadius = 4; 
         datasetConfig.borderWidth = 0;
-        datasetConfig.barPercentage = 0.8; // Breite der Balken steuern
+        datasetConfig.barPercentage = 0.8; 
     }
     
     myChart = new Chart(ctx, {
@@ -450,23 +443,26 @@ function buildChart() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: {
+                duration: 200 
+            },
             plugins: { legend: { display: false } },
             scales: {
                 x: {
                     border: {
                         display: true,
-                        color: 'rgba(255, 255, 255, 0.25)' // Schön sichtbare weiße Basislinie
+                        color: 'rgba(255, 255, 255, 0.25)' 
                     },
                     grid: { display: false },
                     ticks: { 
                         color: '#a0a0ab', 
                         font: { size: 10 },
-                        maxTicksLimit: istKurvenModus ? 5 : 8 // Mehr Platz für die stündliche Achse
+                        maxTicksLimit: istKurvenModus ? 5 : 8 
                     }
                 },
                 y: {
                     beginAtZero: true,
-                    suggestedMax: 1.0, // Erzwingt bei Trockenheit eine Skala bis 1.0mm, damit die Nulllinie unten bleibt!
+                    suggestedMax: 1.0, 
                     border: { display: false },
                     grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     ticks: { 
