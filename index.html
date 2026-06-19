@@ -161,7 +161,7 @@ function analyzeHourlyRain() {
         intEl.innerText = `${maxRain.toFixed(1)} mm/h`; typeEl.innerText = data.high_precision?.niederschlags_art || "Niederschlag";
     } else {
         statusEl.innerHTML = "☀️ Alles trocken";
-        labelD.innerText = "Prognose:"; durEl.innerText = "Kein Regen";
+        labelD.innerText = "Prognose:"; durEl.innerText = "Kein Regen in Sicht";
         intEl.innerText = "-"; typeEl.innerText = "-";
     }
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${jetzt.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} - ${fensterEnde.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr`;
