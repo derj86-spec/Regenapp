@@ -45,7 +45,7 @@
         .detail-item span:first-child { color: var(--text-secondary); }
         .btn { width: 100%; background: var(--accent-blue); color: #000; border: none; padding: 12px; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 15px; }
         .btn-secondary { background: rgba(255, 255, 255, 0.08); color: var(--text-color); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .location-info { font-size: 0.75rem; color: var(--text-secondary); text-align: center; margin-top: 10px; }
+        .location-info { font-size: 0.75rem; color: var(--text-secondary); text-align: center; margin-top: 10px; line-height: 1.4; }
         #chart-view { display: none; margin-top: 15px; }
     </style>
 </head>
@@ -132,7 +132,8 @@ function getWeather() {
             .then(data => {
                 letztesWetterData = data;
                 analyzeHourlyRain();
-                document.getElementById('update-info').innerText = `🔄 Stand: ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+                const jetztZeit = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('update-info').innerHTML = `🟢 Live-Update (minütlich) aktiv<br>Stand: ${jetztZeit} Uhr`;
             });
     }, null, { enableHighAccuracy: true });
 }
