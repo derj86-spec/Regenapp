@@ -168,6 +168,7 @@
         <div id="details-container" class="details">
             <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
             <div class="detail-item"><span>Intensität:</span> <span id="intensity">-</span></div>
+            <div class="detail-item"><span>Art:</span> <span id="precipitation-type" style="color:var(--accent-blue)">-</span></div>
             <div class="detail-item"><span>Datenquelle:</span> <span id="rain-type">-</span></div>
         </div>
         
@@ -335,6 +336,11 @@ function analyzeHourlyRain() {
 
     document.getElementById('duration').innerText = durationStr;
     document.getElementById('intensity').innerText = `${aktuelleIntensitaet.toFixed(1)} mm/h (${intensityText})`;
+    
+    // Zuweisung der Niederschlagsart aus dem JSON
+    const niederschlagsArt = (data.high_precision && data.high_precision.niederschlags_art) ? data.high_precision.niederschlags_art : "Regen";
+    document.getElementById('precipitation-type').innerText = niederschlagsArt;
+    
     document.getElementById('rain-type').innerText = typeText;
 
     if (document.getElementById('chart-view').style.display === 'block') buildChart();
@@ -432,6 +438,5 @@ window.addEventListener('DOMContentLoaded', () => {
     updateInterval = setInterval(getWeather, 60000);
 });
 </script>
-
 </body>
 </html>
