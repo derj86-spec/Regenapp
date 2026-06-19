@@ -88,7 +88,14 @@ function changeHours(idx) {
     vorschauStunden = stundenStufen[parseInt(idx)];
     document.getElementById('slider-value').innerText = `${vorschauStunden} Stunden`;
     document.getElementById('app-title').innerText = `🌧️ RegenCheck (${vorschauStunden}h)`;
-    if (letztesWetterData) analyzeHourlyRain();
+    
+    if (letztesWetterData) {
+        analyzeHourlyRain();
+        // Aktualisiere das Chart direkt, wenn es gerade sichtbar ist
+        if (document.getElementById('chart-view').style.display === 'block') {
+            buildChart();
+        }
+    }
 }
 
 function showChart(v) {
