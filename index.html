@@ -102,22 +102,17 @@ function getWeather() {
     navigator.geolocation.getCurrentPosition((pos) => {
         const lat = pos.coords.latitude.toFixed(4), lon = pos.coords.longitude.toFixed(4);
         
-        // Ortsnamen abrufen - Kombiniert Stadt und Stadtteil
         fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, { headers: { 'Accept-Language': 'de' } })
             .then(res => res.json())
             .then(g => {
                 const addr = g.address;
                 const stadtteil = addr.suburb || addr.quarter || addr.neighbourhood;
                 const stadt = addr.city || addr.town || addr.village;
-                
                 let anzeige = stadt || "Standort gefunden";
-                if (stadtteil) {
-                    anzeige = `${stadt} (${stadtteil})`;
-                }
+                if (stadtteil) anzeige = `${stadt} (${stadtteil})`;
                 document.getElementById('geo-info').innerText = `📍 ${anzeige}`;
             });
             
-        // Wetterdaten abrufen
         fetch(`https://46-225-101-203.sslip.io/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`)
             .then(res => res.json())
             .then(data => {
@@ -130,23 +125,36 @@ function getWeather() {
 
 function analyzeHourlyRain() {
     const data = letztesWetterData;
+    if (!data) return;
+
     const jetzt = new Date();
-    let maxRain = 0, startZeit = null;
+    const fensterEnde = new Date(jetzt.getTime() + vorschauStunden * 3600000);
     
+    let maxRain = 0;
+    let startZeit = null;
+    let regenInFenster = false;
+
     if (data.hourly?.precipitation) {
-        data.hourly.precipitation.forEach((p, i) => {
-            if (p > 0 && !startZeit) startZeit = new Date(data.hourly.time[i]);
-            if (p > maxRain) maxRain = p;
+        data.hourly.time.forEach((t, i) => {
+            const zeitpunkt = new Date(t);
+            if (zeitpunkt >= jetzt && zeitpunkt <= fensterEnde) {
+                const rainValue = data.hourly.precipitation[i] || 0;
+                if (rainValue > 0) {
+                    regenInFenster = true;
+                    if (!startZeit) startZeit = zeitpunkt;
+                    if (rainValue > maxRain) maxRain = rainValue;
+                }
+            }
         });
     }
 
     const isRaining = data.high_precision?.rain_now;
-    document.getElementById('status').innerHTML = isRaining ? "🌧️ Es regnet jetzt!" : (maxRain > 0 ? "⏳ Niederschlag in Sicht!" : "☀️ Alles trocken!");
-    document.getElementById('duration').innerText = isRaining ? "Akut" : (startZeit ? `ca. ${startZeit.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr` : "Kein Regen");
-    document.getElementById('intensity').innerText = `${maxRain.toFixed(1)} mm/h`;
-    document.getElementById('precipitation-type').innerText = (maxRain > 0) ? (data.high_precision?.niederschlags_art || "Niederschlag") : "-";
+    document.getElementById('status').innerHTML = isRaining ? "🌧️ Es regnet jetzt!" : (regenInFenster ? "⏳ Niederschlag in Sicht!" : "☀️ Alles trocken!");
+    document.getElementById('duration').innerText = isRaining ? "Akut" : (regenInFenster ? `ca. ${startZeit.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr` : "Kein Regen");
+    document.getElementById('intensity').innerText = (regenInFenster || isRaining) ? `${maxRain.toFixed(1)} mm/h` : "-";
+    document.getElementById('precipitation-type').innerText = (regenInFenster || isRaining) ? (data.high_precision?.niederschlags_art || "Niederschlag") : "-";
     
-    document.getElementById('time-window-display').innerText = `Zeitfenster: ${jetzt.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} - ${new Date(jetzt.getTime() + vorschauStunden*3600000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr`;
+    document.getElementById('time-window-display').innerText = `Zeitfenster: ${jetzt.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} - ${fensterEnde.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr`;
 }
 
 function buildChart() {
