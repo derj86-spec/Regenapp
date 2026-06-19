@@ -102,13 +102,19 @@ function getWeather() {
     navigator.geolocation.getCurrentPosition((pos) => {
         const lat = pos.coords.latitude.toFixed(4), lon = pos.coords.longitude.toFixed(4);
         
-        // Ortsnamen abrufen - Priorität: Stadtteil -> Stadt
+        // Ortsnamen abrufen - Kombiniert Stadt und Stadtteil
         fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, { headers: { 'Accept-Language': 'de' } })
             .then(res => res.json())
             .then(g => {
                 const addr = g.address;
-                const ortsteil = addr.suburb || addr.quarter || addr.neighbourhood || addr.city || addr.town;
-                document.getElementById('geo-info').innerText = `📍 ${ortsteil || "Standort gefunden"}`;
+                const stadtteil = addr.suburb || addr.quarter || addr.neighbourhood;
+                const stadt = addr.city || addr.town || addr.village;
+                
+                let anzeige = stadt || "Standort gefunden";
+                if (stadtteil) {
+                    anzeige = `${stadt} (${stadtteil})`;
+                }
+                document.getElementById('geo-info').innerText = `📍 ${anzeige}`;
             });
             
         // Wetterdaten abrufen
