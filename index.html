@@ -197,27 +197,20 @@ const stundenStufen = [1, 2, 3, 4, 5, 6, 12, 24];
 
 function changeHours(sliderIndex) {
     vorschauStunden = stundenStufen[parseInt(sliderIndex)];
-    
     document.getElementById('slider-value').innerText = vorschauStunden === 1 ? "1 Stunde" : `${vorschauStunden} Stunden`;
     document.getElementById('app-title').innerText = `🌧️ RegenCheck (${vorschauStunden}h)`;
-    
-    if (letztesWetterData) {
-        analyzeHourlyRain();
-    }
+    if (letztesWetterData) analyzeHourlyRain();
 }
 
 function showChart(visible) {
     document.getElementById('main-view').style.display = visible ? 'none' : 'block';
     document.getElementById('chart-view').style.display = visible ? 'block' : 'none';
-    if (visible && letztesWetterData) {
-        buildChart();
-    }
+    if (visible && letztesWetterData) buildChart();
 }
 
 function getWeather() {
     const statusDiv = document.getElementById('status');
     const geoInfo = document.getElementById('geo-info');
-
     statusDiv.innerHTML = "🔄 Bestimme Standort...";
 
     if (!navigator.geolocation) {
@@ -229,11 +222,9 @@ function getWeather() {
         (position) => {
             const lat = position.coords.latitude.toFixed(4);
             const lon = position.coords.longitude.toFixed(4);
-            
             geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
             
             const geoCodingUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`;
-            
             fetch(geoCodingUrl, { headers: { 'Accept-Language': 'de' } })
                 .then(res => res.json())
                 .then(geoData => {
@@ -241,15 +232,13 @@ function getWeather() {
                         const addr = geoData.address;
                         const stadt = addr.city || addr.town || addr.village || addr.suburb || "Unbekannter Ort";
                         const viertel = addr.suburb || addr.neighbourhood || addr.road || "";
-                        
                         geoInfo.innerHTML = viertel ? `📍 ${stadt} (${viertel})` : `📍 ${stadt}`;
                     }
                 })
                 .catch(err => console.error("Geocoding Fehler:", err));
             
             const url = `https://46-225-101-203.sslip.io/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`;
-            
-            statusDiv.innerHTML = "📡 Lade DWD-Wetterdaten...";
+            statusDiv.innerHTML = "📡 Lade Wetterdaten...";
 
             fetch(url)
                 .then(res => {
@@ -260,19 +249,15 @@ function getWeather() {
                     letztesWetterData = data;
                     analyzeHourlyRain();
                     startLiveCountdown();
-
-                    const jetzt = new Date();
-                    const zeitStr = jetzt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    document.getElementById('update-info').innerText = `🔄 Live-Update active (Letzter Check: ${zeitStr})`;
+                    const zeitStr = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    document.getElementById('update-info').innerText = `🔄 Live-Update aktiv (Letzter Check: ${zeitStr})`;
                 })
                 .catch(err => {
                     statusDiv.innerHTML = "❌ Fehler beim Laden der Wetterdaten.";
                     console.error(err);
                 });
         },
-        (error) => {
-            statusDiv.innerHTML = "❌ Ortung fehlgeschlagen.";
-        },
+        (error) => statusDiv.innerHTML = "❌ Ortung fehlgeschlagen.",
         { enableHighAccuracy: true, timeout: 10000 }
     );
 }
@@ -287,19 +272,13 @@ function formatMinutenSchoen(gesamtMinuten) {
 function analyzeHourlyRain() {
     const statusDiv = document.getElementById('status');
     const data = letztesWetterData;
-    
-    if (!data) {
-        statusDiv.innerHTML = "❌ Keine Daten empfangen.";
-        return;
-    }
+    if (!data) return;
 
     const jetzt = new Date();
     const formatUhrzeitKompakt = (dateObj) => dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-    
     let startTimeStr = formatUhrzeitKompakt(jetzt);
     let zukunftSpaeter = new Date(jetzt.getTime() + vorschauStunden * 60 * 60 * 1000);
     let endTimeStr = formatUhrzeitKompakt(zukunftSpaeter);
-    
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${startTimeStr} - ${endTimeStr} Uhr`;
     
     let durationStr = "";
@@ -310,11 +289,11 @@ function analyzeHourlyRain() {
         statusDiv.innerHTML = `🌧️ Es regnet jetzt!`;
         document.getElementById('label-duration').innerText = "Status:";
         durationStr = "Akuter Niederschlag";
-        typeText = "DWD Live-Radar 📡";
+        typeText = "Echtzeit-Berechnung 📡";
         aktuelleIntensitaet = data.high_precision.current_intensity;
     } else if (data.high_precision && data.high_precision.minuten_bis_regen > 0) {
         const minuten = data.high_precision.minuten_bis_regen;
-        statusDiv.innerHTML = `⏳ Niederschlag in ${minuten} Min.!<br><span style='font-size:0.85rem; color:#a0a0ab;'>DWD 5-Minuten-Radarprognose.</span>`;
+        statusDiv.innerHTML = `⏳ Niederschlag in ${minuten} Minuten!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Minutengenaue Front-Vorhersage.</span>`;
         document.getElementById('label-duration').innerText = "Startet in:";
         durationStr = formatMinutenSchoen(minuten);
         typeText = "Anziehende Front 🌧️";
@@ -324,7 +303,6 @@ function analyzeHourlyRain() {
         if (data.hourly && data.hourly.precipitation && data.hourly.time) {
             const jetztTs = jetzt.getTime();
             const limitTs = jetztTs + (vorschauStunden * 3600000);
-            
             for (let i = 0; i < data.hourly.time.length; i++) {
                 let punktTs = new Date(data.hourly.time[i]).getTime();
                 if (punktTs >= (jetztTs - 2700000) && punktTs <= limitTs) {
@@ -333,7 +311,6 @@ function analyzeHourlyRain() {
                 }
             }
         }
-
         if (maxRain === 0) {
             statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Kein Regen in den nächsten ${vorschauStunden}h.</span>`;
             document.getElementById('label-duration').innerText = "Status:";
@@ -358,9 +335,7 @@ function analyzeHourlyRain() {
     document.getElementById('intensity').innerText = `${aktuelleIntensitaet.toFixed(1)} mm/h (${intensityText})`;
     document.getElementById('rain-type').innerText = typeText;
 
-    if (document.getElementById('chart-view').style.display === 'block') {
-        buildChart();
-    }
+    if (document.getElementById('chart-view').style.display === 'block') buildChart();
 }
 
 function buildChart() {
@@ -371,49 +346,39 @@ function buildChart() {
     
     let labels = [];
     let daten = [];
+    let prognoseListe = letztesWetterData?.high_precision?.forecast_minutely;
     
-    let prognoseListe = null;
-    if (letztesWetterData && letztesWetterData.high_precision) {
-        prognoseListe = letztesWetterData.high_precision.forecast_5min || 
-                        letztesWetterData.high_precision.forecast_5m || 
-                        letztesWetterData.high_precision.radar_5min;
-    }
-    
+    // Kurvenmodus aktivieren, wenn wir in den ersten 2 Stunden sind und Minutendaten haben
     const istKurvenModus = (vorschauStunden <= 2 && prognoseListe && Array.isArray(prognoseListe) && prognoseListe.length > 0);
     
     if (istKurvenModus) {
-        const maxPunkte = vorschauStunden * 12; 
-        const relevantePunkte = prognoseListe.slice(0, maxPunkte + 1);
+        // Wir nehmen die Anzahl an Minuten anhand des Sliders (max 120 für 2h)
+        const maxMinuten = vorschauStunden * 60; 
+        const relevantePunkte = prognoseListe.slice(0, maxMinuten);
         
-        relevantePunkte.forEach(punkt => {
+        relevantePunkte.forEach((punkt, index) => {
             const tempDate = new Date(punkt.timestamp * 1000);
             const zeitString = tempDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-            labels.push(zeitString);
+            // Chart.js wird sonst zu voll, wir übergeben nur alle 15 Minuten ein Label
+            labels.push(index % 15 === 0 ? zeitString : '');
             daten.push(punkt.precipitation);
         });
     } else {
-        if (letztesWetterData.hourly && letztesWetterData.hourly.time && letztesWetterData.hourly.precipitation) {
+        if (letztesWetterData.hourly && letztesWetterData.hourly.time) {
             const jetztTs = jetzt.getTime();
             const limitTs = jetztTs + (vorschauStunden * 3600000);
-            
             for (let i = 0; i < letztesWetterData.hourly.time.length; i++) {
-                let punktStr = letztesWetterData.hourly.time[i];
-                let punktDt = new Date(punktStr);
+                let punktDt = new Date(letztesWetterData.hourly.time[i]);
                 let punktTs = punktDt.getTime();
-                
                 if (punktTs >= (jetztTs - 2700000) && punktTs <= limitTs) {
-                    let zeitString = punktDt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-                    labels.push(zeitString);
+                    labels.push(punktDt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
                     daten.push(letztesWetterData.hourly.precipitation[i] || 0);
                 }
             }
         }
     }
     
-    if (myChart && typeof myChart.destroy === 'function') {
-        myChart.destroy();
-    }
-    
+    if (myChart && typeof myChart.destroy === 'function') myChart.destroy();
     const chartType = istKurvenModus ? 'line' : 'bar';
     
     let datasetConfig = {
@@ -425,7 +390,7 @@ function buildChart() {
 
     if (istKurvenModus) {
         datasetConfig.fill = true;
-        datasetConfig.tension = 0.3;
+        datasetConfig.tension = 0.4;
         datasetConfig.borderWidth = 2;
         datasetConfig.pointRadius = 0; 
     } else {
@@ -436,40 +401,21 @@ function buildChart() {
     
     myChart = new Chart(ctx, {
         type: chartType,
-        data: {
-            labels: labels,
-            datasets: [datasetConfig]
-        },
+        data: { labels: labels, datasets: [datasetConfig] },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: {
-                duration: 200 
-            },
+            responsive: true, maintainAspectRatio: false,
+            animation: { duration: 200 },
             plugins: { legend: { display: false } },
             scales: {
                 x: {
-                    border: {
-                        display: true,
-                        color: 'rgba(255, 255, 255, 0.25)' 
-                    },
+                    border: { display: true, color: 'rgba(255, 255, 255, 0.25)' },
                     grid: { display: false },
-                    ticks: { 
-                        color: '#a0a0ab', 
-                        font: { size: 10 },
-                        maxTicksLimit: istKurvenModus ? 5 : 8 
-                    }
+                    ticks: { color: '#a0a0ab', font: { size: 10 }, autoSkip: false, maxRotation: 0 }
                 },
                 y: {
-                    beginAtZero: true,
-                    suggestedMax: 1.0, 
-                    border: { display: false },
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { 
-                        color: '#a0a0ab', 
-                        font: { size: 10 },
-                        callback: function(value) { return value.toFixed(1) + ' mm'; }
-                    }
+                    beginAtZero: true, suggestedMax: 1.0, 
+                    border: { display: false }, grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#a0a0ab', font: { size: 10 }, callback: value => value.toFixed(1) + ' mm' }
                 }
             }
         }
@@ -478,17 +424,13 @@ function buildChart() {
 
 function startLiveCountdown() {
     if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = setInterval(() => {
-        if (letztesWetterData) {
-            analyzeHourlyRain();
-        }
-    }, 10000); 
+    countdownInterval = setInterval(() => { if (letztesWetterData) analyzeHourlyRain(); }, 10000); 
 }
 
 window.addEventListener('DOMContentLoaded', () => {
     getWeather();
     if (updateInterval) clearInterval(updateInterval);
-    updateInterval = setInterval(getWeather, 300000); 
+    updateInterval = setInterval(getWeather, 60000); // Update nun alle 60 Sekunden für echte Minutengenauigkeit!
 });
 </script>
 
