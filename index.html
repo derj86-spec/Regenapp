@@ -160,9 +160,29 @@ function analyzeHourlyRain() {
 function buildChart() {
     const ctx = document.getElementById('rainChart').getContext('2d');
     if (myChart) myChart.destroy();
+
+    const jetzt = new Date();
+    const fensterEnde = new Date(jetzt.getTime() + vorschauStunden * 3600000);
+    const gefilterteZeiten = [];
+    const gefilterteWerte = [];
+
+    letztesWetterData.hourly.time.forEach((t, i) => {
+        const zeitpunkt = new Date(t);
+        if (zeitpunkt >= jetzt && zeitpunkt <= fensterEnde) {
+            gefilterteZeiten.push(zeitpunkt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
+            gefilterteWerte.push(letztesWetterData.hourly.precipitation[i]);
+        }
+    });
+
     myChart = new Chart(ctx, {
         type: 'bar',
-        data: { labels: letztesWetterData.hourly.time.map(t => new Date(t).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})), datasets: [{ data: letztesWetterData.hourly.precipitation, backgroundColor: '#38bdf8' }] },
+        data: { 
+            labels: gefilterteZeiten, 
+            datasets: [{ 
+                data: gefilterteWerte, 
+                backgroundColor: '#38bdf8' 
+            }] 
+        },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 }
