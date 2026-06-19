@@ -169,7 +169,6 @@
             <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
             <div class="detail-item"><span>Intensität:</span> <span id="intensity">-</span></div>
             <div class="detail-item"><span>Art:</span> <span id="precipitation-type" style="color:var(--accent-blue)">-</span></div>
-            <div class="detail-item"><span>Datenquelle:</span> <span id="rain-type">-</span></div>
         </div>
         
         <button class="btn btn-secondary" id="toggle-chart-btn" onclick="showChart(true)">📊 Diagramm anzeigen</button>
@@ -283,23 +282,18 @@ function analyzeHourlyRain() {
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${startTimeStr} - ${endTimeStr} Uhr`;
     
     let durationStr = "";
-    let typeText = "Wettermodell-Prognose";
     let aktuelleIntensitaet = 0.0;
-
-    const quellenText = data.high_precision && data.high_precision.source ? data.high_precision.source : "DWD ICON-D2";
 
     if (data.high_precision && data.high_precision.rain_now) {
         statusDiv.innerHTML = `🌧️ Es regnet jetzt!`;
         document.getElementById('label-duration').innerText = "Status:";
         durationStr = "Akuter Niederschlag";
-        typeText = quellenText;
         aktuelleIntensitaet = data.high_precision.current_intensity;
     } else if (data.high_precision && data.high_precision.minuten_bis_regen > 0) {
         const minuten = data.high_precision.minuten_bis_regen;
         statusDiv.innerHTML = `⏳ Niederschlag in ${minuten} Minuten!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Kombinierte Radar- & Frontprognose.</span>`;
         document.getElementById('label-duration').innerText = "Startet in:";
         durationStr = formatMinutenSchoen(minuten);
-        typeText = quellenText;
         aktuelleIntensitaet = data.high_precision.current_intensity || 0.1;
     } else {
         let maxRain = 0;
@@ -318,13 +312,11 @@ function analyzeHourlyRain() {
             statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Kein Regen in den nächsten ${vorschauStunden}h.</span>`;
             document.getElementById('label-duration').innerText = "Status:";
             durationStr = "Alles trocken";
-            typeText = quellenText;
             aktuelleIntensitaet = 0.0;
         } else {
             statusDiv.innerHTML = `⏳ Niederschlag in Sicht!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Modell meldet späteren Regen.</span>`;
             document.getElementById('label-duration').innerText = "Startet in:";
             durationStr = "Später am Tag";
-            typeText = "Wettermodell-Prognose";
             aktuelleIntensitaet = maxRain;
         }
     }
@@ -337,11 +329,12 @@ function analyzeHourlyRain() {
     document.getElementById('duration').innerText = durationStr;
     document.getElementById('intensity').innerText = `${aktuelleIntensitaet.toFixed(1)} mm/h (${intensityText})`;
     
-    // Zuweisung der Niederschlagsart aus dem JSON
-    const niederschlagsArt = (data.high_precision && data.high_precision.niederschlags_art) ? data.high_precision.niederschlags_art : "Regen";
+    // Zuweisung der Niederschlagsart
+    let niederschlagsArt = (data.high_precision && data.high_precision.niederschlags_art) ? data.high_precision.niederschlags_art : "Regen";
+    if (aktuelleIntensitaet === 0) {
+        niederschlagsArt = "-";
+    }
     document.getElementById('precipitation-type').innerText = niederschlagsArt;
-    
-    document.getElementById('rain-type').innerText = typeText;
 
     if (document.getElementById('chart-view').style.display === 'block') buildChart();
 }
