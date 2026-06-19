@@ -84,6 +84,21 @@
 let letztesWetterData = null, vorschauStunden = 24, myChart = null;
 const stundenStufen = [1, 2, 3, 4, 5, 6, 12, 24];
 
+function getWetterArt(code) {
+    if (code >= 51 && code <= 55) return "Sprühregen";
+    if (code >= 56 && code <= 57) return "Gefrierender Sprühregen";
+    if (code === 61 || code === 80) return "Leichter Regen";
+    if (code === 63 || code === 81) return "Regen";
+    if (code === 65 || code === 82) return "Starkregen";
+    if (code >= 66 && code <= 67) return "Gefrierender Regen";
+    if (code === 71 || code === 85) return "Leichter Schneefall";
+    if (code >= 73 && code <= 75 || code === 86) return "Starker Schneefall";
+    if (code === 95) return "Gewitter";
+    if (code === 96 || code === 99) return "Gewitter mit Hagel";
+    if (code === 27 || code === 87 || code === 88) return "Graupelschauer";
+    return "Niederschlag";
+}
+
 function changeHours(idx) {
     vorschauStunden = stundenStufen[parseInt(idx)];
     document.getElementById('slider-value').innerText = `${vorschauStunden} Stunden`;
@@ -128,7 +143,7 @@ function analyzeHourlyRain() {
 
     const jetzt = new Date();
     const fensterEnde = new Date(jetzt.getTime() + vorschauStunden * 3600000);
-    let maxRain = 0, startZeit = null, regenInFenster = false;
+    let maxRain = 0, startZeit = null, regenInFenster = false, ersterCode = null;
 
     if (data.hourly?.precipitation) {
         data.hourly.time.forEach((t, i) => {
@@ -137,7 +152,10 @@ function analyzeHourlyRain() {
                 const rainValue = data.hourly.precipitation[i] || 0;
                 if (rainValue > 0) {
                     regenInFenster = true;
-                    if (!startZeit) startZeit = zeitpunkt;
+                    if (!startZeit) {
+                        startZeit = zeitpunkt;
+                        ersterCode = data.hourly.weather_code ? data.hourly.weather_code[i] : null;
+                    }
                     if (rainValue > maxRain) maxRain = rainValue;
                 }
             }
@@ -154,14 +172,16 @@ function analyzeHourlyRain() {
     if (isRaining) {
         statusEl.innerHTML = "🌧️ Es regnet aktuell";
         labelD.innerText = "Status:"; durEl.innerText = "Akut";
-        intEl.innerText = `${maxRain.toFixed(1)} mm/h`; typeEl.innerText = data.high_precision?.niederschlags_art || "Regen";
+        intEl.innerText = `${maxRain.toFixed(1)} mm/h`; 
+        typeEl.innerText = data.high_precision?.niederschlags_art || "Regen";
     } else if (regenInFenster) {
         statusEl.innerHTML = "⏳ Niederschlag erwartet";
         labelD.innerText = "Beginn:"; durEl.innerText = startZeit.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}) + " Uhr";
-        intEl.innerText = `${maxRain.toFixed(1)} mm/h`; typeEl.innerText = data.high_precision?.niederschlags_art || "Niederschlag";
+        intEl.innerText = `${maxRain.toFixed(1)} mm/h`; 
+        typeEl.innerText = ersterCode ? getWetterArt(ersterCode) : "Niederschlag";
     } else {
         statusEl.innerHTML = "☀️ Alles trocken";
-        labelD.innerText = "Prognose:"; durEl.innerText = "Kein Regen in Sicht";
+        labelD.innerText = "Prognose:"; durEl.innerText = "Kein Regen im Zeitfenster";
         intEl.innerText = "-"; typeEl.innerText = "-";
     }
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${jetzt.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} - ${fensterEnde.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr`;
