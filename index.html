@@ -33,281 +33,126 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.3);
         }
         h1 { font-size: 1.5rem; margin-top: 0; text-align: center; color: var(--accent-blue); margin-bottom: 2px; }
-        
-        .time-window-sub {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            text-align: center;
-            margin-bottom: 15px;
-            font-weight: 500;
-        }
-
-        .slider-container {
-            margin: 15px 0 20px 0;
-            background: rgba(255,255,255,0.02);
-            padding: 12px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        .slider-label {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-        }
-        .slider-label span:last-child {
-            color: var(--accent-blue);
-            font-weight: bold;
-        }
-        .range-slider {
-            width: 100%;
-            -webkit-appearance: none;
-            background: rgba(255,255,255,0.1);
-            height: 6px;
-            border-radius: 5px;
-            outline: none;
-        }
-        .range-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: var(--accent-blue);
-            cursor: pointer;
-            transition: transform 0.1s;
-        }
-        .range-slider::-webkit-slider-thumb:active {
-            transform: scale(1.2);
-        }
-
-        .status-box {
-            text-align: center;
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.03);
-            font-size: 1.1rem;
-        }
-        .details {
-            border-top: 1px solid rgba(255,255,255,0.1);
-            padding-top: 15px;
-            margin-top: 15px;
-        }
-        .detail-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            font-size: 0.95rem;
-        }
+        .time-window-sub { font-size: 0.85rem; color: var(--text-secondary); text-align: center; margin-bottom: 15px; font-weight: 500; }
+        .slider-container { margin: 15px 0 20px 0; background: rgba(255,255,255,0.02); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px; }
+        .slider-label span:last-child { color: var(--accent-blue); font-weight: bold; }
+        .range-slider { width: 100%; -webkit-appearance: none; background: rgba(255,255,255,0.1); height: 6px; border-radius: 5px; }
+        .range-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent-blue); cursor: pointer; }
+        .status-box { text-align: center; margin: 20px 0; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); font-size: 1.1rem; }
+        .details { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 15px; }
+        .detail-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.95rem; }
         .detail-item span:first-child { color: var(--text-secondary); }
-        
-        .btn {
-            width: 100%;
-            background: var(--accent-blue);
-            color: #000;
-            border: none;
-            padding: 12px;
-            border-radius: 10px;
-            font-weight: bold;
-            font-size: 1rem;
-            cursor: pointer;
-            margin-top: 15px;
-        }
-        .btn:active { opacity: 0.8; }
-        
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.08);
-            color: var(--text-color);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .btn-secondary:active { background: rgba(255, 255, 255, 0.15); }
-
-        .location-info {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            text-align: center;
-            margin-top: 10px;
-            line-height: 1.4;
-        }
-
-        #chart-view {
-            display: none;
-            margin-top: 15px;
-        }
-        .chart-container {
-            position: relative;
-            width: 100%;
-            height: 200px;
-            background: rgba(255,255,255,0.02);
-            padding: 10px;
-            border-radius: 12px;
-            box-sizing: border-box;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
+        .btn { width: 100%; background: var(--accent-blue); color: #000; border: none; padding: 12px; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        .btn-secondary { background: rgba(255, 255, 255, 0.08); color: var(--text-color); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .location-info { font-size: 0.75rem; color: var(--text-secondary); text-align: center; margin-top: 10px; }
+        #chart-view { display: none; margin-top: 15px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1 id="app-title">🌧️ RegenCheck (2h)</h1>
+    <h1 id="app-title">🌧️ RegenCheck (24h)</h1>
     <div id="time-window-display" class="time-window-sub">Zeitfenster: --:-- - --:-- Uhr</div>
     
     <div class="slider-container">
-        <div class="slider-label">
-            <span>Vorschau-Zeitraum:</span>
-            <span id="slider-value">2 Stunden</span>
-        </div>
-        <input type="range" id="time-slider" class="range-slider" min="0" max="7" value="1" oninput="changeHours(this.value)">
+        <div class="slider-label"><span>Vorschau-Zeitraum:</span><span id="slider-value">24 Stunden</span></div>
+        <input type="range" id="time-slider" class="range-slider" min="0" max="7" value="7" oninput="changeHours(this.value)">
     </div>
 
     <div id="main-view">
         <div id="status" class="status-box">Ortung wird gestartet...</div>
-        
-        <div id="details-container" class="details">
+        <div class="details">
             <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
             <div class="detail-item"><span>Intensität:</span> <span id="intensity">-</span></div>
             <div class="detail-item"><span>Art:</span> <span id="precipitation-type" style="color:var(--accent-blue)">-</span></div>
         </div>
-        
-        <button class="btn btn-secondary" id="toggle-chart-btn" onclick="showChart(true)">📊 Diagramm anzeigen</button>
+        <button class="btn btn-secondary" onclick="showChart(true)">📊 Diagramm anzeigen</button>
     </div>
 
     <div id="chart-view">
-        <div class="chart-container">
-            <canvas id="rainChart"></canvas>
-        </div>
-        <button class="btn btn-secondary" onclick="showChart(false)">⬅️ Zurück zur Übersicht</button>
+        <div style="height: 200px;"><canvas id="rainChart"></canvas></div>
+        <button class="btn btn-secondary" onclick="showChart(false)">⬅️ Zurück</button>
     </div>
 
     <button class="btn" onclick="getWeather()">Jetzt aktualisieren</button>
-    <div id="geo-info" class="location-info">Suche Standort-Signal...</div>
-    <div id="update-info" class="location-info" style="color: #4ade80; font-weight: 500;"></div>
+    <div id="geo-info" class="location-info">Suche Standort...</div>
+    <div id="update-info" class="location-info" style="color: #4ade80;">-</div>
 </div>
 
 <script>
-let updateInterval = null;
-let countdownInterval = null;
-let letztesWetterData = null;
-let vorschauStunden = 2;
-let myChart = null;
-
+let letztesWetterData = null, vorschauStunden = 24, myChart = null;
 const stundenStufen = [1, 2, 3, 4, 5, 6, 12, 24];
 
-function changeHours(sliderIndex) {
-    vorschauStunden = stundenStufen[parseInt(sliderIndex)];
-    document.getElementById('slider-value').innerText = vorschauStunden === 1 ? "1 Stunde" : `${vorschauStunden} Stunden`;
+function changeHours(idx) {
+    vorschauStunden = stundenStufen[parseInt(idx)];
+    document.getElementById('slider-value').innerText = `${vorschauStunden} Stunden`;
     document.getElementById('app-title').innerText = `🌧️ RegenCheck (${vorschauStunden}h)`;
     if (letztesWetterData) analyzeHourlyRain();
 }
 
-function showChart(visible) {
-    document.getElementById('main-view').style.display = visible ? 'none' : 'block';
-    document.getElementById('chart-view').style.display = visible ? 'block' : 'none';
-    if (visible && letztesWetterData) buildChart();
+function showChart(v) {
+    document.getElementById('main-view').style.display = v ? 'none' : 'block';
+    document.getElementById('chart-view').style.display = v ? 'block' : 'none';
+    if (v && letztesWetterData) buildChart();
 }
 
 function getWeather() {
-    const statusDiv = document.getElementById('status');
-    const geoInfo = document.getElementById('geo-info');
-    statusDiv.innerHTML = "🔄 Bestimme Standort...";
-
-    if (!navigator.geolocation) {
-        statusDiv.innerHTML = "❌ Ortung nicht unterstützt.";
-        return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            const lat = position.coords.latitude.toFixed(4);
-            const lon = position.coords.longitude.toFixed(4);
-            geoInfo.innerHTML = `📍 GPS: ${lat}, ${lon}`;
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition((pos) => {
+        const lat = pos.coords.latitude.toFixed(4), lon = pos.coords.longitude.toFixed(4);
+        
+        // Ortsnamen abrufen
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, { headers: { 'Accept-Language': 'de' } })
+            .then(res => res.json())
+            .then(g => document.getElementById('geo-info').innerText = `📍 ${g.address.city || g.address.town || g.address.suburb || "Standort gefunden"}`);
             
-            const url = `https://46-225-101-203.sslip.io/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`;
-            statusDiv.innerHTML = "📡 Lade Wetterdaten...";
-
-            fetch(url)
-                .then(res => res.json())
-                .then(data => {
-                    letztesWetterData = data;
-                    analyzeHourlyRain();
-                    startLiveCountdown();
-                    document.getElementById('update-info').innerText = `🔄 Stand: ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
-                })
-                .catch(() => statusDiv.innerHTML = "❌ Fehler beim Laden.");
-        },
-        () => statusDiv.innerHTML = "❌ Ortung fehlgeschlagen. (Berechtigungen prüfen!)",
-        { enableHighAccuracy: true, timeout: 10000 }
-    );
-}
-
-function formatMinutenSchoen(min) {
-    if (min < 60) return `${min} Min.`;
-    return `${Math.floor(min/60)} Std. ${min%60} Min.`;
+        // Wetterdaten abrufen
+        fetch(`https://46-225-101-203.sslip.io/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`)
+            .then(res => res.json())
+            .then(data => {
+                letztesWetterData = data;
+                analyzeHourlyRain();
+                document.getElementById('update-info').innerText = `🔄 Autoupdate (minütlich) aktiv. Letzter Stand: ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+            });
+    }, null, { enableHighAccuracy: true });
 }
 
 function analyzeHourlyRain() {
-    const statusDiv = document.getElementById('status');
     const data = letztesWetterData;
-    if (!data) return;
-
     const jetzt = new Date();
-    const formatU = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-    document.getElementById('time-window-display').innerText = `Zeitfenster: ${formatU(jetzt)} - ${formatU(new Date(jetzt.getTime() + vorschauStunden * 3600000))} Uhr`;
-
-    let startZeit = null, maxRain = 0;
+    let maxRain = 0, startZeit = null;
+    
     if (data.hourly?.precipitation) {
-        data.hourly.time.forEach((t, i) => {
-            let punkt = new Date(t);
-            if (punkt >= new Date(jetzt.getTime() - 2700000) && punkt <= new Date(jetzt.getTime() + vorschauStunden * 3600000)) {
-                if (data.hourly.precipitation[i] > 0 && !startZeit) startZeit = punkt;
-                if (data.hourly.precipitation[i] > maxRain) maxRain = data.hourly.precipitation[i];
-            }
+        data.hourly.precipitation.forEach((p, i) => {
+            if (p > 0 && !startZeit) startZeit = new Date(data.hourly.time[i]);
+            if (p > maxRain) maxRain = p;
         });
     }
 
-    if (data.high_precision?.rain_now) {
-        statusDiv.innerHTML = "🌧️ Es regnet jetzt!";
-        document.getElementById('duration').innerText = "Akuter Niederschlag";
-    } else if (data.high_precision?.minuten_bis_regen > 0) {
-        statusDiv.innerHTML = `⏳ Regen in ${data.high_precision.minuten_bis_regen} Min.`;
-        document.getElementById('duration').innerText = formatMinutenSchoen(data.high_precision.minuten_bis_regen);
-    } else if (maxRain > 0) {
-        statusDiv.innerHTML = "⏳ Niederschlag in Sicht!";
-        document.getElementById('duration').innerText = startZeit ? `ca. ${formatU(startZeit)} Uhr` : "Später";
-    } else {
-        statusDiv.innerHTML = "☀️ Alles trocken!";
-        document.getElementById('duration').innerText = "Kein Regen";
-    }
-
+    const isRaining = data.high_precision?.rain_now;
+    document.getElementById('status').innerHTML = isRaining ? "🌧️ Es regnet jetzt!" : (maxRain > 0 ? "⏳ Niederschlag in Sicht!" : "☀️ Alles trocken!");
+    document.getElementById('duration').innerText = isRaining ? "Akut" : (startZeit ? `ca. ${startZeit.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr` : "Kein Regen");
     document.getElementById('intensity').innerText = `${maxRain.toFixed(1)} mm/h`;
-    document.getElementById('precipitation-type').innerText = (maxRain > 0) ? (data.high_precision?.niederschlags_art || "Regen") : "-";
-    if (document.getElementById('chart-view').style.display === 'block') buildChart();
+    
+    // Logik für Art: Wenn es regnet, nimm den Typ, sonst Strich
+    document.getElementById('precipitation-type').innerText = (maxRain > 0) ? (data.high_precision?.niederschlags_art || "Niederschlag") : "-";
+    
+    document.getElementById('time-window-display').innerText = `Zeitfenster: ${jetzt.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} - ${new Date(jetzt.getTime() + vorschauStunden*3600000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr`;
 }
 
 function buildChart() {
     const ctx = document.getElementById('rainChart').getContext('2d');
     if (myChart) myChart.destroy();
-    
-    let labels = [], daten = [];
-    letztesWetterData.hourly?.time.forEach((t, i) => {
-        labels.push(new Date(t).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}));
-        daten.push(letztesWetterData.hourly.precipitation[i] || 0);
-    });
-
     myChart = new Chart(ctx, {
         type: 'bar',
-        data: { labels: labels, datasets: [{ data: daten, backgroundColor: '#38bdf8' }] },
+        data: { labels: letztesWetterData.hourly.time.map(t => new Date(t).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})), datasets: [{ data: letztesWetterData.hourly.precipitation, backgroundColor: '#38bdf8' }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 }
 
-function startLiveCountdown() {
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = setInterval(analyzeHourlyRain, 60000);
-}
-
+// Intervall für automatisches Update alle 60 Sekunden
+setInterval(getWeather, 60000);
 window.addEventListener('DOMContentLoaded', getWeather);
 </script>
 </body>
