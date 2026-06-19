@@ -168,7 +168,7 @@
         <div id="details-container" class="details">
             <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
             <div class="detail-item"><span>Intensität:</span> <span id="intensity">-</span></div>
-            <div class="detail-item"><span>Niederschlagsart:</span> <span id="rain-type">-</span></div>
+            <div class="detail-item"><span>Datenquelle:</span> <span id="rain-type">-</span></div>
         </div>
         
         <button class="btn btn-secondary" id="toggle-chart-btn" onclick="showChart(true)">📊 Diagramm anzeigen</button>
@@ -282,21 +282,23 @@ function analyzeHourlyRain() {
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${startTimeStr} - ${endTimeStr} Uhr`;
     
     let durationStr = "";
-    let typeText = "Kein Niederschlag";
+    let typeText = "Wettermodell-Prognose";
     let aktuelleIntensitaet = 0.0;
+
+    const quellenText = data.high_precision && data.high_precision.source ? data.high_precision.source : "DWD ICON-D2";
 
     if (data.high_precision && data.high_precision.rain_now) {
         statusDiv.innerHTML = `🌧️ Es regnet jetzt!`;
         document.getElementById('label-duration').innerText = "Status:";
         durationStr = "Akuter Niederschlag";
-        typeText = "Echtzeit-Berechnung 📡";
+        typeText = quellenText;
         aktuelleIntensitaet = data.high_precision.current_intensity;
     } else if (data.high_precision && data.high_precision.minuten_bis_regen > 0) {
         const minuten = data.high_precision.minuten_bis_regen;
-        statusDiv.innerHTML = `⏳ Niederschlag in ${minuten} Minuten!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Minutengenaue Front-Vorhersage.</span>`;
+        statusDiv.innerHTML = `⏳ Niederschlag in ${minuten} Minuten!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Kombinierte Radar- & Frontprognose.</span>`;
         document.getElementById('label-duration').innerText = "Startet in:";
         durationStr = formatMinutenSchoen(minuten);
-        typeText = "Anziehende Front 🌧️";
+        typeText = quellenText;
         aktuelleIntensitaet = data.high_precision.current_intensity || 0.1;
     } else {
         let maxRain = 0;
@@ -315,7 +317,7 @@ function analyzeHourlyRain() {
             statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Kein Regen in den nächsten ${vorschauStunden}h.</span>`;
             document.getElementById('label-duration').innerText = "Status:";
             durationStr = "Alles trocken";
-            typeText = "Kein Niederschlag";
+            typeText = quellenText;
             aktuelleIntensitaet = 0.0;
         } else {
             statusDiv.innerHTML = `⏳ Niederschlag in Sicht!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Modell meldet späteren Regen.</span>`;
@@ -348,18 +350,15 @@ function buildChart() {
     let daten = [];
     let prognoseListe = letztesWetterData?.high_precision?.forecast_minutely;
     
-    // Kurvenmodus aktivieren, wenn wir in den ersten 2 Stunden sind und Minutendaten haben
     const istKurvenModus = (vorschauStunden <= 2 && prognoseListe && Array.isArray(prognoseListe) && prognoseListe.length > 0);
     
     if (istKurvenModus) {
-        // Wir nehmen die Anzahl an Minuten anhand des Sliders (max 120 für 2h)
         const maxMinuten = vorschauStunden * 60; 
         const relevantePunkte = prognoseListe.slice(0, maxMinuten);
         
         relevantePunkte.forEach((punkt, index) => {
             const tempDate = new Date(punkt.timestamp * 1000);
             const zeitString = tempDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-            // Chart.js wird sonst zu voll, wir übergeben nur alle 15 Minuten ein Label
             labels.push(index % 15 === 0 ? zeitString : '');
             daten.push(punkt.precipitation);
         });
@@ -430,7 +429,7 @@ function startLiveCountdown() {
 window.addEventListener('DOMContentLoaded', () => {
     getWeather();
     if (updateInterval) clearInterval(updateInterval);
-    updateInterval = setInterval(getWeather, 60000); // Update nun alle 60 Sekunden für echte Minutengenauigkeit!
+    updateInterval = setInterval(getWeather, 60000);
 });
 </script>
 
