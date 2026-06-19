@@ -297,17 +297,23 @@ function analyzeHourlyRain() {
         aktuelleIntensitaet = data.high_precision.current_intensity || 0.1;
     } else {
         let maxRain = 0;
+        let startZeit = null;
         if (data.hourly && data.hourly.precipitation && data.hourly.time) {
             const jetztTs = jetzt.getTime();
             const limitTs = jetztTs + (vorschauStunden * 3600000);
             for (let i = 0; i < data.hourly.time.length; i++) {
-                let punktTs = new Date(data.hourly.time[i]).getTime();
+                let punktDt = new Date(data.hourly.time[i]);
+                let punktTs = punktDt.getTime();
                 if (punktTs >= (jetztTs - 2700000) && punktTs <= limitTs) {
                     let val = data.hourly.precipitation[i] || 0;
+                    if (val > 0 && startZeit === null) {
+                        startZeit = punktDt;
+                    }
                     if (val > maxRain) maxRain = val;
                 }
             }
         }
+        
         if (maxRain === 0) {
             statusDiv.innerHTML = `☀️ Trocken!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Kein Regen in den nächsten ${vorschauStunden}h.</span>`;
             document.getElementById('label-duration').innerText = "Status:";
@@ -315,8 +321,8 @@ function analyzeHourlyRain() {
             aktuelleIntensitaet = 0.0;
         } else {
             statusDiv.innerHTML = `⏳ Niederschlag in Sicht!<br><span style='font-size:0.85rem; color:#a0a0ab;'>Modell meldet späteren Regen.</span>`;
-            document.getElementById('label-duration').innerText = "Startet in:";
-            durationStr = "Später am Tag";
+            document.getElementById('label-duration').innerText = "Startet ca.:";
+            durationStr = startZeit ? `ca. ${formatUhrzeitKompakt(startZeit)} Uhr` : "Später am Tag";
             aktuelleIntensitaet = maxRain;
         }
     }
@@ -329,7 +335,6 @@ function analyzeHourlyRain() {
     document.getElementById('duration').innerText = durationStr;
     document.getElementById('intensity').innerText = `${aktuelleIntensitaet.toFixed(1)} mm/h (${intensityText})`;
     
-    // Zuweisung der Niederschlagsart
     let niederschlagsArt = (data.high_precision && data.high_precision.niederschlags_art) ? data.high_precision.niederschlags_art : "Regen";
     if (aktuelleIntensitaet === 0) {
         niederschlagsArt = "-";
@@ -381,55 +386,4 @@ function buildChart() {
     
     let datasetConfig = {
         label: 'Niederschlag (mm/h)',
-        data: daten,
-        borderColor: '#38bdf8',
-        backgroundColor: istKurvenModus ? 'rgba(56, 189, 248, 0.15)' : 'rgba(56, 189, 248, 0.65)',
-    };
-
-    if (istKurvenModus) {
-        datasetConfig.fill = true;
-        datasetConfig.tension = 0.4;
-        datasetConfig.borderWidth = 2;
-        datasetConfig.pointRadius = 0; 
-    } else {
-        datasetConfig.borderRadius = 4; 
-        datasetConfig.borderWidth = 0;
-        datasetConfig.barPercentage = 0.8; 
-    }
-    
-    myChart = new Chart(ctx, {
-        type: chartType,
-        data: { labels: labels, datasets: [datasetConfig] },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            animation: { duration: 200 },
-            plugins: { legend: { display: false } },
-            scales: {
-                x: {
-                    border: { display: true, color: 'rgba(255, 255, 255, 0.25)' },
-                    grid: { display: false },
-                    ticks: { color: '#a0a0ab', font: { size: 10 }, autoSkip: false, maxRotation: 0 }
-                },
-                y: {
-                    beginAtZero: true, suggestedMax: 1.0, 
-                    border: { display: false }, grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#a0a0ab', font: { size: 10 }, callback: value => value.toFixed(1) + ' mm' }
-                }
-            }
-        }
-    });
-}
-
-function startLiveCountdown() {
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = setInterval(() => { if (letztesWetterData) analyzeHourlyRain(); }, 10000); 
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-    getWeather();
-    if (updateInterval) clearInterval(updateInterval);
-    updateInterval = setInterval(getWeather, 60000);
-});
-</script>
-</body>
-</html>
+        data: daten
