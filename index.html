@@ -97,18 +97,26 @@ function updateUI() {
     const fensterEnde = new Date(jetzt.getTime() + vorschauStunden * 3600000);
     document.getElementById('time-window-display').innerText = `Zeitfenster: ${jetzt.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} - ${fensterEnde.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr`;
 
+    // Priorität 1: Regnet es aktuell?
     if (hp.rain_now) {
         document.getElementById('status').innerHTML = "🌧️ Es regnet aktuell";
+        document.getElementById('label-duration').innerText = "Status:";
         document.getElementById('duration').innerText = "Akut";
         document.getElementById('intensity').innerText = `${hp.current_intensity.toFixed(1)} mm/h`;
-        document.getElementById('precipitation-type').innerText = hp.niederschlags_art;
-    } else if (hp.minuten_bis_regen >= 0 && hp.minuten_bis_regen <= vorschauStunden * 60) {
+        document.getElementById('precipitation-type').innerText = hp.niederschlags_art || "Regen";
+    } 
+    // Priorität 2: Regen kommt bald (nur anzeigen, wenn innerhalb des gewählten Zeitfensters)
+    else if (hp.minuten_bis_regen >= 0 && hp.minuten_bis_regen <= vorschauStunden * 60) {
         document.getElementById('status').innerHTML = `⏳ Regen in ${hp.minuten_bis_regen} Min.`;
+        document.getElementById('label-duration').innerText = "Beginn:";
         document.getElementById('duration').innerText = new Date(jetzt.getTime() + hp.minuten_bis_regen * 60000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}) + " Uhr";
         document.getElementById('intensity').innerText = "-";
         document.getElementById('precipitation-type').innerText = "Vorhersage";
-    } else {
+    } 
+    // Priorität 3: Alles trocken
+    else {
         document.getElementById('status').innerHTML = "☀️ Alles trocken";
+        document.getElementById('label-duration').innerText = "Status:";
         document.getElementById('duration').innerText = "Kein Regen";
         document.getElementById('intensity').innerText = "-";
         document.getElementById('precipitation-type').innerText = "-";
@@ -120,7 +128,9 @@ function buildChart() {
     if (myChart) myChart.destroy();
     const hp = letztesWetterData.high_precision;
     const labels = [], values = [];
-    hp.forecast_minutely.slice(0, vorschauStunden * 60).forEach((item, i) => {
+    // Nur Daten innerhalb des gewählten Fensters zeigen
+    const dataSlice = hp.forecast_minutely.slice(0, vorschauStunden * 60);
+    dataSlice.forEach((item, i) => {
         labels.push(i % 15 === 0 ? new Date(item.timestamp * 1000).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}) : '');
         values.push(item.precipitation);
     });
