@@ -1,198 +1,150 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RegenCheck (2h)</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root {
-            --bg-color: #121214;
-            --card-color: #1a1a1e;
-            --text-color: #ffffff;
-            --text-secondary: #a0a0ab;
-            --accent-blue: #38bdf8;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .container {
-            width: 100%;
-            max-width: 400px;
-            background: var(--card-color);
-            border-radius: 20px;
-            padding: 25px;
-            box-sizing: border-box;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        }
-        h1 { font-size: 1.5rem; margin-top: 0; text-align: center; color: var(--accent-blue); margin-bottom: 2px; }
-        .time-window-sub { font-size: 0.85rem; color: var(--text-secondary); text-align: center; margin-bottom: 20px; font-weight: 500; }
-        .status-box { text-align: center; margin: 15px 0 20px 0; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); font-size: 1.1rem; }
-        .details { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 15px; }
-        .detail-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.95rem; }
-        .detail-item span:first-child { color: var(--text-secondary); }
-        .btn { width: 100%; background: var(--accent-blue); color: #000; border: none; padding: 12px; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 15px; }
-        .btn-secondary { background: rgba(255, 255, 255, 0.08); color: var(--text-color); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .location-info { font-size: 0.75rem; color: var(--text-secondary); text-align: center; margin-top: 10px; line-height: 1.4; }
-        #chart-view { display: none; margin-top: 15px; }
-    </style>
-</head>
-<body>
+from datetime import datetime
+import time
+import requests
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
-<div class="container">
-    <h1>🌧️ RegenCheck (2h)</h1>
-    <div id="time-window-display" class="time-window-sub">Zeitfenster: --:-- - --:-- Uhr</div>
+app = Flask(__name__)
+CORS(app)  # Erlaubt Cross-Origin-Requests für dein Frontend
 
-    <div id="main-view">
-        <div id="status" class="status-box">Ortung wird gestartet...</div>
-        <div class="details">
-            <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
-            <div class="detail-item"><span>Intensität:</span> <span id="intensity">-</span></div>
-            <div class="detail-item"><span>Art:</span> <span id="precipitation-type" style="color:var(--accent-blue)">-</span></div>
-        </div>
-        <button class="btn btn-secondary" onclick="showChart(true)">📊 2-Stunden-Diagramm</button>
-    </div>
+# Dein Tomorrow.io API-Key
+API_KEY = "DEIN_TOMORROW_IO_API_KEY"
 
-    <div id="chart-view">
-        <div style="height: 200px;"><canvas id="rainChart"></canvas></div>
-        <button class="btn btn-secondary" onclick="showChart(false)">⬅️ Zurück</button>
-    </div>
-
-    <button class="btn" onclick="getWeather()">Jetzt aktualisieren</button>
-    <div id="geo-info" class="location-info">Suche Standort...</div>
-    <div id="update-info" class="location-info" style="color: #4ade80;">-</div>
-</div>
-
-<script>
-let letztesWetterData = null, myChart = null;
-
-function showChart(v) {
-    document.getElementById('main-view').style.display = v ? 'none' : 'block';
-    document.getElementById('chart-view').style.display = v ? 'block' : 'none';
-    if (v && letztesWetterData) buildChart();
+# In-Memory Cache im VPS-Arbeitsspeicher
+cache = {
+    "timestamp": 0,
+    "data": None,
+    "lat_rounded": None,
+    "lon_rounded": None,
 }
 
-function getWeather() {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition((pos) => {
-        const lat = pos.coords.latitude.toFixed(4), lon = pos.coords.longitude.toFixed(4);
-        
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, { headers: { 'Accept-Language': 'de' } })
-            .then(res => res.json())
-            .then(g => {
-                const addr = g.address;
-                const display = (addr.city || addr.town || addr.village || "Standort") + (addr.suburb ? ` (${addr.suburb})` : "");
-                document.getElementById('geo-info').innerText = `📍 ${display}`;
-            });
-            
-        fetch(`https://46-225-101-203.sslip.io/api/regen?lat=${lat}&lon=${lon}&cb=${Date.now()}`)
-            .then(res => res.json())
-            .then(data => {
-                letztesWetterData = data;
-                analyzeRain();
-                const jetztZeit = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-                document.getElementById('update-info').innerHTML = `🟢 Live-Update (minütlich) aktiv<br>Stand: ${jetztZeit} Uhr`;
-            });
-    }, null, { enableHighAccuracy: true });
-}
 
-function analyzeRain() {
-    const data = letztesWetterData;
-    if (!data || !data.high_precision?.forecast_minutely) return;
+@app.route("/api/regen", methods=["GET"])
+def api_regen():
+  global cache
 
-    const jetzt = new Date();
-    const fensterEnde = new Date(jetzt.getTime() + 2 * 3600000); // Exakt 2 Stunden
-    
-    let maxRain = 0, minutenBisRegen = -1, regenImFenster = false;
-    const forecast = data.high_precision.forecast_minutely; // Array aus dem Backend (120 Minuten)
+  # Koordinaten aus der Frontend-Anfrage holen
+  try:
+    lat = float(request.args.get("lat", 52.3745))
+    lon = float(request.args.get("lon", 9.7386))
+  except ValueError:
+    return jsonify({"error": "Invalid coordinates"}), 400
 
-    forecast.forEach((item, index) => {
-        const val = item.precipitation;
-        if (val >= 0.1) {
-            regenImFenster = true;
-            if (minutenBisRegen === -1) minutenBisRegen = index; // index entspricht direkt den Minuten
-            if (val > maxRain) maxRain = val;
-        }
-    });
+  # Auf 2 Nachkommastellen runden (~100m Raster für den Stadtteil)
+  lat_r = round(lat, 2)
+  lon_r = round(lon, 2)
 
-    const isRaining = data.high_precision?.rain_now;
-    const statusEl = document.getElementById('status');
-    const labelD = document.getElementById('label-duration');
-    const durEl = document.getElementById('duration');
-    const intEl = document.getElementById('intensity');
-    const typeEl = document.getElementById('precipitation-type');
+  current_time = time.time()
+  cache_duration = 15 * 60  # 15 Minuten Cache
 
-    if (isRaining) {
-        statusEl.innerHTML = "🌧️ Es regnet aktuell";
-        labelD.innerText = "Status:"; durEl.innerText = "Akut";
-        intEl.innerText = `${maxRain.toFixed(1)} mm/h`; 
-        typeEl.innerText = data.high_precision?.niederschlags_art || "Regen";
-    } else if (regenImFenster) {
-        statusEl.innerHTML = "⏳ Niederschlag erwartet";
-        labelD.innerText = "Beginn:"; 
-        if (minutenBisRegen === 0) {
-            durEl.innerText = "In wenigen Momenten";
-        } else {
-            durEl.innerText = `In ca. ${minutenBisRegen} Min.`;
-        }
-        intEl.innerText = `${maxRain.toFixed(1)} mm/h`; 
-        typeEl.innerText = data.high_precision?.niederschlags_art || "Niederschlag";
-    } else {
-        statusEl.innerHTML = "☀️ Alles trocken";
-        labelD.innerText = "Prognose:"; durEl.innerText = "Kein Regen in den nächsten 2 Std.";
-        intEl.innerText = "-"; typeEl.innerText = "-";
-    }
-    
-    document.getElementById('time-window-display').innerText = `Zeitfenster: ${jetzt.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} - ${fensterEnde.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})} Uhr`;
-}
+  # 1. Prüfen, ob der Cache noch gültig ist und derselbe Standort abgefragt wird
+  if (
+      cache["data"] is not None
+      and (current_time - cache["timestamp"] < cache_duration)
+      and cache["lat_rounded"] == lat_r
+      and cache["lon_rounded"] == lon_r
+  ):
+    print("Liefere Daten aus dem 15-Minuten-Cache...")
+    return jsonify(cache["data"])
 
-function buildChart() {
-    const ctx = document.getElementById('rainChart').getContext('2d');
-    if (myChart) myChart.destroy();
-    
-    const forecast = letztesWetterData.high_precision.forecast_minutely;
-    const labels = [], values = [];
+  # 2. Frische Daten von Tomorrow.io abrufen
+  print("Frische Daten von Tomorrow.io werden abgerufen...")
+  url = "https://api.tomorrow.io/v4/weather/forecast"
+  params = {
+      "location": f"{lat},{lon}",
+      "timesteps": "1m",  # Minütliche Intervalle
+      "fields": ["precipitationIntensity", "precipitationType", "temperature"],
+      "units": "metric",
+      "apikey": API_KEY,
+  }
 
-    // Wir nehmen jeden 5. Datenpunkt (alle 5 Minuten), damit das Diagramm übersichtlich bleibt
-    forecast.forEach((item, index) => {
-        if (index % 5 === 0) {
-            const d = new Date(item.timestamp * 1000);
-            labels.push(d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
-            values.push(item.precipitation);
-        }
-    });
+  response = requests.get(url, params=params)
 
-    myChart = new Chart(ctx, {
-        type: 'bar',
-        data: { 
-            labels, 
-            datasets: [{ 
-                data: values, 
-                backgroundColor: '#38bdf8',
-                borderRadius: 4
-            }] 
-        },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a0a0ab' } },
-                x: { grid: { display: false }, ticks: { color: '#a0a0ab', maxTicksLimit: 6 } }
-            }
-        }
-    });
-}
+  if response.status_code == 200:
+    raw_data = response.json()
 
-setInterval(getWeather, 60000);
-window.addEventListener('DOMContentLoaded', getWeather);
-</script>
-</body>
-</html>
+    # Tomorrow.io JSON in das Format mappen, das dein Frontend erwartet
+    try:
+      minutely_intervals = (
+          raw_data.get("timelines", {}).get("minutely", [])
+      )
+      forecast_minutely = []
+
+      is_raining_now = False
+      max_intensity_now = 0.0
+
+      for i, item in enumerate(minutely_intervals[:120]):  # 2 Stunden (120 Min)
+        values = item.get("values", {})
+        precip_intensity = values.get("precipitationIntensity", 0.0)
+        # Convert ISO timestamp to unix timestamp (seconds)
+        dt_obj = datetime.fromisoformat(
+            item.get("time").replace("Z", "+00:00")
+        )
+        ts = int(dt_obj.timestamp())
+
+        forecast_minutely.append(
+            {"timestamp": ts, "precipitation": precip_intensity}
+        )
+
+        # Prüfen ob es im ersten Moment (jetzt) regnet
+        if i == 0 and precip_intensity >= 0.1:
+          is_raining_now = True
+
+      # Niederschlagsart übersetzen (Tomorrow.io gibt Codes/Zahlen oder Strings zurück)
+      # Typischerweise: 0 = Kein, 1 = Regen, 2 = Schnee, 3 = Graupel, 4 = Hagel
+      first_values = (
+          minutely_intervals[0].get("values", {})
+          if minutely_intervals
+          else {}
+      )
+      p_type_code = first_values.get("precipitationType", 0)
+      type_map = {
+          0: "Kein Niederschlag",
+          1: "Regen",
+          2: "Schnee",
+          3: "Graupel",
+          4: "Hagel",
+      }
+      niederschlags_art = type_map.get(p_type_code, "Regen")
+
+      formatted_data = {
+          "high_precision": {
+              "rain_now": is_raining_now,
+              "niederschlags_art": niederschlags_art,
+              "forecast_minutely": forecast_minutely,
+          }
+      }
+
+      # In den Cache schreiben
+      cache["timestamp"] = current_time
+      cache["data"] = formatted_data
+      cache["lat_rounded"] = lat_r
+      cache["lon_rounded"] = lon_r
+
+      return jsonify(formatted_data)
+
+    except Exception as e:
+      print(f"Fehler beim Parsen der Tomorrow.io Daten: {e}")
+      # Fallback auf alten Cache falls vorhanden
+      if cache["data"] is not None:
+        return jsonify(cache["data"])
+      return jsonify({"error": "Parsing failed", "details": str(e)}), 500
+
+  else:
+    # API-Fehler (z.B. Limit erreicht) -> Fallback auf Cache
+    print(
+        f"API-Fehler von Tomorrow.io: {response.status_code} - {response.text}"
+    )
+    if cache["data"] is not None:
+      print("Liefere alten Cache als Fallback wegen API-Fehler.")
+      return jsonify(cache["data"])
+    return (
+        jsonify(
+            {"error": "API request failed", "details": response.text}
+        ),
+        502,
+    )
+
+
+if __name__ == "__main__":
+  app.run(host="0.0.0.0", port=5000)
