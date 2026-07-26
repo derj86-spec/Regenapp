@@ -7,9 +7,6 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)  # Erlaubt Cross-Origin-Requests für dein Frontend
 
-# Dein Tomorrow.io API-Key
-API_KEY = "DEIN_TOMORROW_IO_API_KEY"
-
 # In-Memory Cache im VPS-Arbeitsspeicher
 cache = {
     "timestamp": 0,
@@ -35,7 +32,7 @@ def api_regen():
   lon_r = round(lon, 2)
 
   current_time = time.time()
-  cache_duration = 15 * 60  # 15 Minuten Cache
+  cache_duration = 5 * 60  # 5 Minuten Cache
 
   # 1. Prüfen, ob der Cache noch gültig ist und derselbe Standort abgefragt wird
   if (
@@ -44,18 +41,17 @@ def api_regen():
       and cache["lat_rounded"] == lat_r
       and cache["lon_rounded"] == lon_r
   ):
-    print("Liefere Daten aus dem 15-Minuten-Cache...")
+    print("Liefere Daten aus dem Cache...")
     return jsonify(cache["data"])
 
-  # 2. Frische Daten von Tomorrow.io abrufen
-  print("Frische Daten von Tomorrow.io werden abgerufen...")
-  url = "https://api.tomorrow.io/v4/weather/forecast"
+  # 2. Frische Daten von Open-Meteo abrufen (Kein API-Key nötig!)
+  print("Frische Daten von Open-Meteo werden abgerufen...")
+  url = "https://api.open-meteo.com/v1/forecast"
   params = {
-      "location": f"{lat},{lon}",
-      "timesteps": "1m",  # Minütliche Intervalle
-      "fields": ["precipitationIntensity", "precipitationType", "temperature"],
-      "units": "metric",
-      "apikey": API_KEY,
+      "latitude": lat,
+      "longitude": lon,
+      "minutely_15": "precipitation",
+      "timezone": "Europe/Berlin",
   }
 
   response = requests.get(url, params=params)
@@ -63,54 +59,34 @@ def api_regen():
   if response.status_code == 200:
     raw_data = response.json()
 
-    # Tomorrow.io JSON in das Format mappen, das dein Frontend erwartet
     try:
-      minutely_intervals = (
-          raw_data.get("timelines", {}).get("minutely", [])
-      )
+      minutely_data = raw_data.get("minutely_15", {})
+      times = minutely_data.get("time", [])
+      precips = minutely_data.get("precipitation", [])
+
       forecast_minutely = []
-
       is_raining_now = False
-      max_intensity_now = 0.0
 
-      for i, item in enumerate(minutely_intervals[:120]):  # 2 Stunden (120 Min)
-        values = item.get("values", {})
-        precip_intensity = values.get("precipitationIntensity", 0.0)
-        # Convert ISO timestamp to unix timestamp (seconds)
-        dt_obj = datetime.fromisoformat(
-            item.get("time").replace("Z", "+00:00")
-        )
+      for i in range(len(times)):
+        t_str = times[i]
+        val = precips[i] if i < len(precips) else 0.0
+        if val is None:
+          val = 0.0
+
+        # ISO Zeit in Unix Timestamp umwandeln
+        dt_obj = datetime.fromisoformat(t_str)
         ts = int(dt_obj.timestamp())
 
-        forecast_minutely.append(
-            {"timestamp": ts, "precipitation": precip_intensity}
-        )
+        forecast_minutely.append({"timestamp": ts, "precipitation": val})
 
-        # Prüfen ob es im ersten Moment (jetzt) regnet
-        if i == 0 and precip_intensity >= 0.1:
+        # Prüfen ob es im ersten Moment regnet
+        if i == 0 and val >= 0.1:
           is_raining_now = True
-
-      # Niederschlagsart übersetzen (Tomorrow.io gibt Codes/Zahlen oder Strings zurück)
-      # Typischerweise: 0 = Kein, 1 = Regen, 2 = Schnee, 3 = Graupel, 4 = Hagel
-      first_values = (
-          minutely_intervals[0].get("values", {})
-          if minutely_intervals
-          else {}
-      )
-      p_type_code = first_values.get("precipitationType", 0)
-      type_map = {
-          0: "Kein Niederschlag",
-          1: "Regen",
-          2: "Schnee",
-          3: "Graupel",
-          4: "Hagel",
-      }
-      niederschlags_art = type_map.get(p_type_code, "Regen")
 
       formatted_data = {
           "high_precision": {
               "rain_now": is_raining_now,
-              "niederschlags_art": niederschlags_art,
+              "niederschlags_art": "Regen",
               "forecast_minutely": forecast_minutely,
           }
       }
@@ -124,26 +100,18 @@ def api_regen():
       return jsonify(formatted_data)
 
     except Exception as e:
-      print(f"Fehler beim Parsen der Tomorrow.io Daten: {e}")
-      # Fallback auf alten Cache falls vorhanden
+      print(f"Fehler beim Parsen der Open-Meteo Daten: {e}")
       if cache["data"] is not None:
         return jsonify(cache["data"])
       return jsonify({"error": "Parsing failed", "details": str(e)}), 500
 
   else:
-    # API-Fehler (z.B. Limit erreicht) -> Fallback auf Cache
     print(
-        f"API-Fehler von Tomorrow.io: {response.status_code} - {response.text}"
+        f"API-Fehler von Open-Meteo: {response.status_code} - {response.text}"
     )
     if cache["data"] is not None:
-      print("Liefere alten Cache als Fallback wegen API-Fehler.")
       return jsonify(cache["data"])
-    return (
-        jsonify(
-            {"error": "API request failed", "details": response.text}
-        ),
-        502,
-    )
+    return jsonify({"error": "API request failed", "details": response.text}), 502
 
 
 if __name__ == "__main__":
