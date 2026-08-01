@@ -72,16 +72,33 @@ function initLocation(force = false) {
     if (savedLat && savedLon && !force) {
         getWeatherData();
     } else {
+        document.getElementById('geo-info').innerText = "Suche Standort...";
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 savedLat = pos.coords.latitude.toFixed(4);
                 savedLon = pos.coords.longitude.toFixed(4);
+                reverseGeocode(savedLat, savedLon);
                 getWeatherData();
             },
             () => { document.getElementById('status').innerText = "Standort verweigert"; },
             { enableHighAccuracy: true }
         );
     }
+}
+
+function reverseGeocode(lat, lon) {
+    fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=de`)
+        .then(res => res.json())
+        .then(data => {
+            const stadt = data.city || data.locality || "";
+            const stadtteil = data.localityInfo?.administrative?.find(a => a.order >= 8)?.name || data.locality || "";
+            let text = stadt;
+            if (stadtteil && stadtteil !== stadt) text = `${stadt}-${stadtteil}`;
+            document.getElementById('geo-info').innerText = `📍 ${text || "Standort gefunden"}`;
+        })
+        .catch(() => {
+            document.getElementById('geo-info').innerText = "📍 Standort gefunden";
+        });
 }
 
 function getWeatherData() {
