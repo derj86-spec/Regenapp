@@ -87,11 +87,12 @@ function initLocation(force = false) {
 }
 
 function reverseGeocode(lat, lon) {
-    fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=de`)
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1&accept-language=de`)
         .then(res => res.json())
         .then(data => {
-            const stadt = data.city || data.locality || "";
-            const stadtteil = data.localityInfo?.administrative?.find(a => a.order >= 8)?.name || data.locality || "";
+            const addr = data.address || {};
+            const stadt = addr.city || addr.town || addr.village || addr.municipality || "";
+            const stadtteil = addr.suburb || addr.city_district || addr.neighbourhood || "";
             let text = stadt;
             if (stadtteil && stadtteil !== stadt) text = `${stadt}-${stadtteil}`;
             document.getElementById('geo-info').innerText = `📍 ${text || "Standort gefunden"}`;
