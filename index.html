@@ -1,118 +1,164 @@
-from datetime import datetime
-import time
-import requests
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RegenCheck</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-color: #1a1a1e;
+            --text-color: #ffffff;
+            --text-secondary: #a0a0ab;
+            --accent-blue: #38bdf8;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 400px; background: var(--card-color); border-radius: 20px; padding: 25px; box-sizing: border-box; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        h1 { font-size: 1.5rem; margin-top: 0; text-align: center; color: var(--accent-blue); margin-bottom: 2px; }
+        .time-window-sub { font-size: 0.85rem; color: var(--text-secondary); text-align: center; margin-bottom: 20px; font-weight: 500; }
+        .status-box { text-align: center; margin: 20px 0; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); font-size: 1.1rem; font-weight: bold; }
+        .details { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 15px; }
+        .detail-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.95rem; }
+        .detail-item span:first-child { color: var(--text-secondary); }
+        .btn { width: 100%; background: var(--accent-blue); color: #000; border: none; padding: 12px; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        .btn-secondary { background: rgba(255, 255, 255, 0.08); color: var(--text-color); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .location-info { font-size: 0.75rem; color: var(--text-secondary); text-align: center; margin-top: 10px; line-height: 1.4; }
+    </style>
+</head>
+<body>
 
-app = Flask(__name__)
-CORS(app)  # Erlaubt Cross-Origin-Requests für dein Frontend
+<div class="container">
+    <h1>🌧️ RegenCheck</h1>
+    <div id="time-window-display" class="time-window-sub">Vorhersage für die nächsten 2 Stunden</div>
 
-# In-Memory Cache im VPS-Arbeitsspeicher
-cache = {
-    "timestamp": 0,
-    "data": None,
-    "lat_rounded": None,
-    "lon_rounded": None,
+    <div id="main-view">
+        <div id="status" class="status-box">Ortung wird gestartet...</div>
+        <div class="details">
+            <div class="detail-item"><span id="label-duration">Status:</span> <span id="duration">-</span></div>
+            <div class="detail-item"><span>Intensität:</span> <span id="intensity">-</span></div>
+            <div class="detail-item"><span>Art:</span> <span id="precipitation-type" style="color:var(--accent-blue)">-</span></div>
+        </div>
+        <button class="btn btn-secondary" onclick="showChart(true)">📊 Diagramm anzeigen</button>
+    </div>
+
+    <div id="chart-view" style="display: none;">
+        <div style="height: 200px; margin-top: 15px;"><canvas id="rainChart"></canvas></div>
+        <button class="btn btn-secondary" onclick="showChart(false)" style="margin-top: 15px;">⬅️ Zurück</button>
+    </div>
+
+    <button class="btn" onclick="initLocation(true)">🔄 Standort & Wetter aktualisieren</button>
+    <div id="geo-info" class="location-info">Suche Standort...</div>
+    <div id="update-info" class="location-info" style="color: #4ade80;">-</div>
+</div>
+
+<script>
+// Fest: Vorschau immer für die nächsten 2 Stunden.
+// Open-Meteo "minutely_15" liefert einen Wert alle 15 Minuten,
+// 2 Stunden = 8 Datenpunkte.
+const VORSCHAU_MINUTEN = 120;
+const INTERVAL_MINUTEN = 15;
+const ANZAHL_PUNKTE = VORSCHAU_MINUTEN / INTERVAL_MINUTEN; // 8
+
+let letztesWetterData = null, myChart = null, savedLat = null, savedLon = null;
+
+function showChart(v) {
+    document.getElementById('main-view').style.display = v ? 'none' : 'block';
+    document.getElementById('chart-view').style.display = v ? 'block' : 'none';
+    if (v && letztesWetterData) buildChart();
 }
 
+function initLocation(force = false) {
+    if (savedLat && savedLon && !force) {
+        getWeatherData();
+    } else {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                savedLat = pos.coords.latitude.toFixed(4);
+                savedLon = pos.coords.longitude.toFixed(4);
+                getWeatherData();
+            },
+            () => { document.getElementById('status').innerText = "Standort verweigert"; },
+            { enableHighAccuracy: true }
+        );
+    }
+}
 
-@app.route("/api/regen", methods=["GET"])
-def api_regen():
-  global cache
+function getWeatherData() {
+    fetch(`https://46-225-101-203.sslip.io/api/regen?lat=${savedLat}&lon=${savedLon}&cb=${Date.now()}`)
+        .then(res => res.json())
+        .then(data => {
+            letztesWetterData = data;
+            analyzeRain();
+            if (document.getElementById('chart-view').style.display === 'block') buildChart();
+            document.getElementById('update-info').innerHTML =
+                `🟢 Live-Update aktiv<br>Stand: ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`;
+        })
+        .catch(() => document.getElementById('status').innerText = "Server nicht erreichbar");
+}
 
-  # Koordinaten aus der Frontend-Anfrage holen
-  try:
-    lat = float(request.args.get("lat", 52.3745))
-    lon = float(request.args.get("lon", 9.7386))
-  except ValueError:
-    return jsonify({"error": "Invalid coordinates"}), 400
+function analyzeRain() {
+    const data = letztesWetterData;
+    if (!data) return;
+    const hp = data.high_precision;
+    const jetzt = new Date();
 
-  # Auf 2 Nachkommastellen runden (~100m Raster für den Stadtteil)
-  lat_r = round(lat, 2)
-  lon_r = round(lon, 2)
+    if (hp.rain_now) {
+        document.getElementById('status').innerHTML = "🌧️ Es regnet aktuell";
+        document.getElementById('label-duration').innerText = "Status:";
+        document.getElementById('duration').innerText = "Akut";
+        document.getElementById('intensity').innerText = `${hp.current_intensity.toFixed(1)} mm/h`;
+        document.getElementById('precipitation-type').innerText = hp.niederschlags_art;
+    } else if (hp.minuten_bis_regen >= 0 && hp.minuten_bis_regen <= VORSCHAU_MINUTEN) {
+        document.getElementById('status').innerHTML = `⏳ Regen in ${hp.minuten_bis_regen} Min.`;
+        document.getElementById('label-duration').innerText = "Beginn:";
+        document.getElementById('duration').innerText =
+            new Date(jetzt.getTime() + hp.minuten_bis_regen * 60000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + " Uhr";
+        document.getElementById('intensity').innerText = "Prognose aktiv";
+        document.getElementById('precipitation-type').innerText = "-";
+    } else {
+        document.getElementById('status').innerHTML = "☀️ In den nächsten 2h trocken";
+        document.getElementById('duration').innerText = "Kein Regen";
+        document.getElementById('intensity').innerText = "-";
+        document.getElementById('precipitation-type').innerText = "-";
+    }
+    document.getElementById('time-window-display').innerText =
+        `Stand: ${jetzt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr – nächste 2 Stunden`;
+}
 
-  current_time = time.time()
-  cache_duration = 5 * 60  # 5 Minuten Cache
+function buildChart() {
+    const ctx = document.getElementById('rainChart').getContext('2d');
+    if (myChart) myChart.destroy();
+    const hp = letztesWetterData.high_precision;
 
-  # 1. Prüfen, ob der Cache noch gültig ist und derselbe Standort abgefragt wird
-  if (
-      cache["data"] is not None
-      and (current_time - cache["timestamp"] < cache_duration)
-      and cache["lat_rounded"] == lat_r
-      and cache["lon_rounded"] == lon_r
-  ):
-    print("Liefere Daten aus dem Cache...")
-    return jsonify(cache["data"])
+    const punkte = hp.forecast_minutely.slice(0, ANZAHL_PUNKTE);
+    const labels = punkte.map(item =>
+        new Date(item.timestamp * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+    );
+    const values = punkte.map(item => item.precipitation);
 
-  # 2. Frische Daten von Open-Meteo abrufen (Kein API-Key nötig!)
-  print("Frische Daten von Open-Meteo werden abgerufen...")
-  url = "https://api.open-meteo.com/v1/forecast"
-  params = {
-      "latitude": lat,
-      "longitude": lon,
-      "minutely_15": "precipitation",
-      "timezone": "Europe/Berlin",
-  }
+    myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                data: values,
+                borderColor: '#38bdf8',
+                fill: true,
+                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
+        }
+    });
+}
 
-  response = requests.get(url, params=params)
-
-  if response.status_code == 200:
-    raw_data = response.json()
-
-    try:
-      minutely_data = raw_data.get("minutely_15", {})
-      times = minutely_data.get("time", [])
-      precips = minutely_data.get("precipitation", [])
-
-      forecast_minutely = []
-      is_raining_now = False
-
-      for i in range(len(times)):
-        t_str = times[i]
-        val = precips[i] if i < len(precips) else 0.0
-        if val is None:
-          val = 0.0
-
-        # ISO Zeit in Unix Timestamp umwandeln
-        dt_obj = datetime.fromisoformat(t_str)
-        ts = int(dt_obj.timestamp())
-
-        forecast_minutely.append({"timestamp": ts, "precipitation": val})
-
-        # Prüfen ob es im ersten Moment regnet
-        if i == 0 and val >= 0.1:
-          is_raining_now = True
-
-      formatted_data = {
-          "high_precision": {
-              "rain_now": is_raining_now,
-              "niederschlags_art": "Regen",
-              "forecast_minutely": forecast_minutely,
-          }
-      }
-
-      # In den Cache schreiben
-      cache["timestamp"] = current_time
-      cache["data"] = formatted_data
-      cache["lat_rounded"] = lat_r
-      cache["lon_rounded"] = lon_r
-
-      return jsonify(formatted_data)
-
-    except Exception as e:
-      print(f"Fehler beim Parsen der Open-Meteo Daten: {e}")
-      if cache["data"] is not None:
-        return jsonify(cache["data"])
-      return jsonify({"error": "Parsing failed", "details": str(e)}), 500
-
-  else:
-    print(
-        f"API-Fehler von Open-Meteo: {response.status_code} - {response.text}"
-    )
-    if cache["data"] is not None:
-      return jsonify(cache["data"])
-    return jsonify({"error": "API request failed", "details": response.text}), 502
-
-
-if __name__ == "__main__":
-  app.run(host="0.0.0.0", port=5000)
+window.addEventListener('DOMContentLoaded', () => initLocation(false));
+setInterval(getWeatherData, 60000);
+</script>
+</body>
+</html>
